@@ -1,0 +1,42 @@
+appId: pk.alhamza.pos
+productName: Al Hamza POS
+copyright: Al Hamza Electronics - Dina
+
+directories:
+  buildResources: resources
+  output: release
+
+files:
+  - out/**/*
+  - package.json
+  - '!**/*.map'
+
+# better-sqlite3 and argon2 are native modules: they ship unpacked so the
+# .node binaries can be loaded from disk rather than from inside the asar.
+asarUnpack:
+  - '**/node_modules/better-sqlite3/**'
+  - '**/node_modules/@node-rs/**'
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: resources/icon.ico
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Al Hamza POS
+  deleteAppDataOnUninstall: false  # never delete the shop's database on uninstall
+
+# Auto-update feed. The repo must be PUBLIC: electron-updater reads releases
+# anonymously from the shop PC, and a private repo would mean shipping a
+# GitHub token inside the installer. Only the app's code is public here —
+# the shop's database never leaves the machine.
+publish:
+  - provider: github
+    owner: MJAsrar
+    repo: pos

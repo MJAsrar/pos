@@ -1,0 +1,142 @@
+@import 'tailwindcss';
+
+/* Fonts are bundled, not fetched. The shop is offline most of the day, and a
+   counter screen that falls back to Times New Roman at 9am is not acceptable. */
+@import '@fontsource/ibm-plex-sans/latin-400.css';
+@import '@fontsource/ibm-plex-sans/latin-500.css';
+@import '@fontsource/ibm-plex-sans/latin-600.css';
+@import '@fontsource/ibm-plex-sans-condensed/latin-500.css';
+@import '@fontsource/ibm-plex-sans-condensed/latin-600.css';
+
+@theme {
+  /* The palette comes from the two things actually on this counter: the paper
+     khata (ruled lines, black ink, red for what is owed) and the goods
+     themselves (circuit-board green, brass contacts). */
+  --color-paper: #f4f6f4;
+  --color-surface: #ffffff;
+  --color-sunk: #eceff0;
+
+  --color-ink: #14201a;
+  --color-ink-soft: #5d6b63;
+  --color-ink-faint: #8a958f;
+
+  --color-rule: #dbe2dc;
+  --color-rule-strong: #b8c3bb;
+
+  /* PCB green. Primary actions, and money that has come in. */
+  --color-board: #0b6b47;
+  --color-board-dark: #075437;
+  --color-board-tint: #e8f2ec;
+
+  /* Ledger red. What is owed, and anything destructive. */
+  --color-due: #a81e17;
+  --color-due-tint: #fbeceb;
+
+  /* Brass. At most one thing per screen wears this. */
+  --color-brass: #9a7b1f;
+  --color-brass-tint: #fbf3df;
+
+  --font-sans: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+  --font-condensed: 'IBM Plex Sans Condensed', 'IBM Plex Sans', 'Segoe UI', sans-serif;
+
+  --text-micro: 0.6875rem;
+  --text-meta: 0.78125rem;
+  --text-base: 0.875rem;
+  --text-row: 0.9375rem;
+  --text-section: 1.0625rem;
+  --text-title: 1.5rem;
+  --text-display: 2.75rem;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: 1.45;
+    /* Counter software, not a web page: dragging across a row should not paint
+       it blue, and the window should never rubber-band. */
+    -webkit-user-select: none;
+    user-select: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  input,
+  textarea,
+  [data-selectable] {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  /* Every digit in a money column has to sit in the same place as the one above
+     it, or a total cannot be scanned at a glance. */
+  .tabular,
+  input[inputmode='decimal'],
+  input[inputmode='numeric'] {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-board);
+    outline-offset: 2px;
+  }
+
+  ::placeholder {
+    color: var(--color-ink-faint);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-rule-strong);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer utilities {
+  /* A row that was just added flashes once so the cashier can confirm it landed
+     without looking away from the customer. This is the only unprompted motion
+     in the app. */
+  .row-landed {
+    animation: row-land 420ms ease-out;
+  }
+
+  @keyframes row-land {
+    from {
+      background-color: var(--color-board-tint);
+    }
+    to {
+      background-color: transparent;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .row-landed {
+      animation: none;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

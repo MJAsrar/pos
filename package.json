@@ -1,0 +1,36 @@
+{
+  "name": "alhamza-pos",
+  "private": true,
+  "version": "0.1.0",
+  "description": "POS system for Al Hamza Electronics - Dina",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "npm run dev --workspace=@pos/desktop",
+    "build": "npm run build --workspace=@pos/shared && npm run build --workspace=@pos/desktop",
+    "build:win": "npm run build --workspace=@pos/shared && npm run build:win --workspace=@pos/desktop",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vite": "^7.3.6"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.21.5": true,
+    "electron@44.4.3": true,
+    "electron-winstaller@5.4.0": true,
+    "better-sqlite3@13.0.3": true
+  },
+  "overrides": {
+    "vite": "$vite"
+  }
+}

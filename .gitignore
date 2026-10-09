@@ -1,0 +1,19 @@
+node_modules/
+dist/
+out/
+build/
+release/
+*.tsbuildinfo
+.DS_Store
+Thumbs.db
+.env
+.env.local
+*.log
+coverage/
+# local database artifacts (never commit shop data)
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.db-wal
+*.db-shm
