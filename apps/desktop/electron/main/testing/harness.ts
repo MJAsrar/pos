@@ -145,3 +145,29 @@ export function countMovements(db: BetterSqlite3.Database, type: string): number
     .get(type) as { count: number };
   return row.count;
 }
+
+/** What is currently queued for the server. */
+export function outbox(
+  db: BetterSqlite3.Database,
+  table?: string,
+): Array<{ table_name: string; row_id: string; status: string }> {
+  const where = table ? ` WHERE table_name = '${table}'` : '';
+  return db
+    .prepare(`SELECT table_name, row_id, status FROM sync_outbox${where} ORDER BY queued_at, row_id`)
+    .all() as Array<{ table_name: string; row_id: string; status: string }>;
+}
+
+/**
+ * Run something as though it were a batch arriving from the server.
+ *
+ * Mirrors what the sync engine does, including clearing the flag when the work
+ * throws — a flag left set would silently stop queuing every later local edit.
+ */
+export function asServerApply<T>(db: BetterSqlite3.Database, work: () => T): T {
+  db.prepare(`INSERT OR REPLACE INTO sync_state (key, value) VALUES ('applying', '1')`).run();
+  try {
+    return work();
+  } finally {
+    db.prepare(`DELETE FROM sync_state WHERE key = 'applying'`).run();
+  }
+}

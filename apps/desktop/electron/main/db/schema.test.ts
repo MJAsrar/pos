@@ -46,6 +46,9 @@ describe('schema', () => {
         'sales',
         'settings',
         'stock_movements',
+        'sync_conflicts',
+        'sync_outbox',
+        'sync_state',
         'users',
       ].sort(),
     );

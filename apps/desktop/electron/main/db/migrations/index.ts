@@ -1,4 +1,5 @@
 import { sql as m001 } from './001_init.js';
+import { sql as m002 } from './002_sync.js';
 
 export interface Migration {
   /** Matches the value written to `PRAGMA user_version` once applied. */
@@ -19,6 +20,7 @@ export interface Migration {
  */
 export const migrations: readonly Migration[] = [
   { version: 1, name: 'init', sql: m001 },
+  { version: 2, name: 'sync', sql: m002 },
 ];
 
 export const latestVersion = migrations.reduce((max, m) => Math.max(max, m.version), 0);

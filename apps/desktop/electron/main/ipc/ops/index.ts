@@ -6,6 +6,7 @@ import { registerItemOps } from './items.js';
 import { registerReceiptOps } from './receipts.js';
 import { registerReportOps } from './reports.js';
 import { registerSaleOps } from './sales.js';
+import { registerSyncOps } from './sync.js';
 
 /**
  * Register every operation the renderer is allowed to call.
@@ -20,6 +21,7 @@ export function registerAllOps(): void {
   registerSaleOps();
   registerReportOps();
   registerReceiptOps();
+  registerSyncOps();
   registerAdminOps();
   // No-op in a packaged build.
   registerDevOps();

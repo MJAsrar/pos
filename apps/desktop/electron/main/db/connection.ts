@@ -28,6 +28,11 @@ export function openDatabase(path: string = databasePath()): BetterSqlite3.Datab
   connection.pragma('busy_timeout = 5000');
 
   lastMigration = migrate(connection, path);
+
+  // A crash while applying a batch from the server would leave the 'applying'
+  // flag set, and every later local change would silently stop being queued.
+  // Clearing it on open makes that impossible to inherit.
+  connection.prepare(`DELETE FROM sync_state WHERE key = 'applying'`).run();
   seedDefaults(connection);
 
   db = connection;
