@@ -6,6 +6,7 @@ import { Field } from '@/components/Field';
 import { PageHeader } from '@/components/PageHeader';
 import { Modal } from '@/components/Modal';
 import { ApiError, api, type BackupFile } from '@/lib/api';
+import { CloudSection } from './CloudSection';
 
 /**
  * Shop details, selling rules, and the health of the data.
@@ -129,6 +130,13 @@ export function SettingsScreen(): React.JSX.Element {
 
           <DataHealth />
           <Backups />
+
+          <Section
+            title="Seeing the shop from a phone"
+            detail="A copy kept online so you can look at the shop from anywhere. This is not a backup — the backup is the file on this computer, above."
+          >
+            <CloudSection />
+          </Section>
         </div>
       </div>
     </div>

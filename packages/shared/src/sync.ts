@@ -153,20 +153,26 @@ export interface MasterDecision {
 /**
  * Who wins when both sides edited the same master row.
  *
- * Last write wins on `updatedAt`, with two guards that matter more than the
- * rule itself.
+ * Last write wins on `updatedAt`, clamped to the server's own clock before
+ * comparison. A counter PC whose clock is three days fast would otherwise win
+ * every conflict forever, and nobody would understand why the changes made on
+ * the website kept disappearing.
  *
- * The timestamp is clamped to the server's own clock before comparison. A
- * counter PC whose clock is three days fast would otherwise win every conflict
- * forever, and nobody would understand why the website's changes kept
- * disappearing.
+ * An exact tie is accepted rather than refused. Timestamps carry milliseconds,
+ * so the realistic tie is not two devices at once — it is one device editing
+ * the same row twice inside a millisecond with a sync in between. Refusing the
+ * second edit loses it silently, and tells the shop it was changed somewhere
+ * else, which is not even true.
  *
- * Ties break on device id, so both ends independently reach the same answer
- * rather than flip-flopping.
+ * Accepting is safe because only one place ever runs this: the server, which
+ * handles one request at a time. Last to arrive wins, every device then pulls
+ * that same value, and they converge. An earlier version broke ties on device
+ * id so both ends would independently reach the same answer — but no client
+ * ever decides, so there was never a second answer to agree with.
  */
 export function decideMasterWrite(
-  incoming: { updatedAt: Timestamp; deviceId: string },
-  existing: { updatedAt: Timestamp; deviceId: string } | null,
+  incoming: { updatedAt: Timestamp },
+  existing: { updatedAt: Timestamp } | null,
   serverNow: Timestamp,
 ): MasterDecision {
   const incomingMs = Date.parse(incoming.updatedAt);
@@ -193,17 +199,7 @@ export function decideMasterWrite(
   const existingMs = Date.parse(existing.updatedAt);
   if (!Number.isFinite(existingMs)) return { outcome: 'accept', effectiveAt };
 
-  if (effectiveMs > existingMs) return { outcome: 'accept', effectiveAt };
-
-  if (effectiveMs === existingMs) {
-    return incoming.deviceId > existing.deviceId
-      ? { outcome: 'accept', effectiveAt }
-      : {
-          outcome: 'conflict',
-          effectiveAt,
-          reason: 'The same row was changed in both places at the same moment.',
-        };
-  }
+  if (effectiveMs >= existingMs) return { outcome: 'accept', effectiveAt };
 
   return {
     outcome: 'conflict',
@@ -221,6 +217,101 @@ export function decideMasterWrite(
  */
 export function decideEventWrite(exists: boolean): RowOutcome {
   return exists ? 'ok' : 'ok';
+}
+
+// --- Order ----------------------------------------------------------------
+
+/**
+ * The order rows must be written in: parents before the rows that point at them.
+ *
+ * Needed on both ends, for opposite reasons. Pushing in this order means the
+ * server sees a bill before its lines. Applying in this order means SQLite's
+ * foreign keys are satisfied as a pulled batch is written — the outbox is
+ * ordered by time and then by table name, and `sale_items` sorts before
+ * `sales` alphabetically, which would otherwise put every bill's lines ahead
+ * of the bill.
+ */
+export const APPLY_ORDER: readonly string[] = [
+  // Nothing points at anything.
+  'settings',
+  'users',
+  'categories',
+  // Point at a category.
+  'items',
+  'customers',
+  // Point at a customer and a user.
+  'sales',
+  'expenses',
+  // Point at a bill, an item or a customer.
+  'sale_items',
+  'sale_returns',
+  'stock_movements',
+  'customer_ledger_entries',
+  'customer_payments',
+  // Points at a return and at the sale line being returned.
+  'sale_return_items',
+  'audit_log',
+];
+
+/** Where a table sits in that order. Unknown tables go last. */
+export function applyRank(table: string): number {
+  const index = APPLY_ORDER.indexOf(table);
+  return index === -1 ? APPLY_ORDER.length : index;
+}
+
+/** Sort rows so parents are written before their children. */
+export function inApplyOrder<T extends { table: string }>(rows: readonly T[]): T[] {
+  return [...rows].sort((a, b) => applyRank(a.table) - applyRank(b.table));
+}
+
+// --- Identifying one row across the wire ----------------------------------
+
+export function rowKey(table: string, id: string): string {
+  return `${table}:${id}`;
+}
+
+export function parseRowKey(key: string | null | undefined): { table: string; id: string } | null {
+  if (!key) return null;
+  const at = key.indexOf(':');
+  if (at <= 0 || at === key.length - 1) return null;
+  return { table: key.slice(0, at), id: key.slice(at + 1) };
+}
+
+// --- Failures -------------------------------------------------------------
+
+/**
+ * The server answered, and refused.
+ *
+ * Distinct from an ordinary `Error`, which means the server could not be
+ * reached at all. The difference decides what happens next: a refusal counts
+ * against the row's attempts and eventually sets it aside, while being offline
+ * counts against nothing. A shop with a week of bad internet must not come
+ * back to a queue full of rows marked dead.
+ *
+ * `row` is set when the server could say which row it choked on, which lets
+ * the engine set that one aside and send everything else.
+ */
+export class SyncServerError extends Error {
+  readonly code: string | null;
+  readonly row: { table: string; id: string } | null;
+
+  constructor(
+    message: string,
+    options: { code?: string | null; rowKey?: string | null } = {},
+  ) {
+    super(message);
+    this.name = 'SyncServerError';
+    this.code = options.code ?? null;
+    this.row = parseRowKey(options.rowKey);
+  }
+}
+
+/** The terminal's sign-in has lapsed and a person has to enter it again. */
+export class SyncAuthError extends Error {
+  constructor(message = 'This computer needs to be signed in to the cloud again.') {
+    super(message);
+    this.name = 'SyncAuthError';
+  }
 }
 
 /** Readable summary for the status line. */

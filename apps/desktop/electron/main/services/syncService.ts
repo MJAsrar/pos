@@ -1,34 +1,53 @@
 import type BetterSqlite3 from 'better-sqlite3';
-import { nowIso } from '@pos/shared';
+import { nowIso, uuidv7 } from '@pos/shared';
+import {
+  countByStatus,
+  countUnseenConflicts,
+  deleteQueuedIfUnchanged,
+  deleteStateValue,
+  insertConflict,
+  markAllConflictsSeen,
+  readStateValue,
+  requeueDead,
+  selectConflicts,
+  selectQueued,
+  updateQueuedFailure,
+  writeStateValue,
+} from '../db/repos/syncRepo.js';
 
 /**
  * The local side of sync: what is waiting to go, and what came back.
  *
- * This file owns the bookkeeping — the queue, the cursor, the flag that stops
- * pulled rows echoing back. The engine that talks to the server builds on top
- * of it, and the shop sees it as one line in the app chrome.
+ * This file owns the rules — how many failures before a row is set aside, what
+ * the shop is told, how pulled rows are kept from echoing back. The queries
+ * live in `db/repos/syncRepo.ts`; the engine that talks to the server builds on
+ * top of both.
  */
 
 // --- Bookkeeping -----------------------------------------------------------
 
-export type SyncStateKey = 'cursor' | 'lastSyncedAt' | 'lastError' | 'clockSkewMs' | 'applying';
+export type SyncStateKey =
+  | 'cursor'
+  | 'lastSyncedAt'
+  | 'lastError'
+  | 'clockSkewMs'
+  | 'applying'
+  /** When a copy of the database last went offsite. */
+  | 'lastOffsiteAt'
+  /** This machine's name on the wire. Stored here because `sync_state` is one
+   *  of the two tables that never sync, and a device id must not be shared. */
+  | 'deviceId';
 
 export function readState(db: BetterSqlite3.Database, key: SyncStateKey): string | null {
-  const row = db.prepare(`SELECT value FROM sync_state WHERE key = ?`).get(key) as
-    | { value: string }
-    | undefined;
-  return row?.value ?? null;
+  return readStateValue(db, key);
 }
 
 export function writeState(db: BetterSqlite3.Database, key: SyncStateKey, value: string): void {
-  db.prepare(
-    `INSERT INTO sync_state (key, value) VALUES (?, ?)
-     ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
-  ).run(key, value);
+  writeStateValue(db, key, value);
 }
 
 export function clearState(db: BetterSqlite3.Database, key: SyncStateKey): void {
-  db.prepare(`DELETE FROM sync_state WHERE key = ?`).run(key);
+  deleteStateValue(db, key);
 }
 
 /**
@@ -62,30 +81,18 @@ export interface SyncStatus {
   unseenConflicts: number;
   lastSyncedAt: string | null;
   lastError: string | null;
-  /** True once a server has been configured; false means sync is simply off. */
+  /** True once a terminal is signed in; false means sync is simply off. */
   configured: boolean;
 }
 
 export function syncStatus(db: BetterSqlite3.Database, configured: boolean): SyncStatus {
-  const counts = db
-    .prepare(
-      `SELECT
-         COUNT(*) FILTER (WHERE status = 'pending') AS pending,
-         COUNT(*) FILTER (WHERE status = 'failed')  AS failed,
-         COUNT(*) FILTER (WHERE status = 'dead')    AS dead
-       FROM sync_outbox`,
-    )
-    .get() as { pending: number; failed: number; dead: number };
-
-  const conflicts = db
-    .prepare(`SELECT COUNT(*) AS n FROM sync_conflicts WHERE seen = 0`)
-    .get() as { n: number };
+  const counts = countByStatus(db);
 
   return {
     pending: counts.pending,
     failed: counts.failed,
     dead: counts.dead,
-    unseenConflicts: conflicts.n,
+    unseenConflicts: countUnseenConflicts(db),
     lastSyncedAt: readState(db, 'lastSyncedAt'),
     lastError: readState(db, 'lastError'),
     configured,
@@ -98,6 +105,8 @@ export interface QueuedRow {
   tableName: string;
   rowId: string;
   attempts: number;
+  /** When the trigger last queued it. Used to detect a change made mid-sync. */
+  queuedAt: string;
 }
 
 /**
@@ -107,36 +116,37 @@ export interface QueuedRow {
  * up everything queued behind it.
  */
 export function nextBatch(db: BetterSqlite3.Database, limit = 200): QueuedRow[] {
-  const rows = db
-    .prepare(
-      `SELECT table_name, row_id, attempts
-         FROM sync_outbox
-        WHERE status IN ('pending', 'failed')
-        ORDER BY queued_at, table_name, row_id
-        LIMIT ?`,
-    )
-    .all(limit) as Array<{ table_name: string; row_id: string; attempts: number }>;
-
-  return rows.map((row) => ({
+  return selectQueued(db, limit).map((row) => ({
     tableName: row.table_name,
     rowId: row.row_id,
     attempts: row.attempts,
+    queuedAt: row.queued_at,
   }));
 }
 
-/** Accepted by the server: stop tracking it. */
-export function markSent(db: BetterSqlite3.Database, rows: readonly QueuedRow[]): void {
-  const remove = db.prepare(`DELETE FROM sync_outbox WHERE table_name = ? AND row_id = ?`);
-  for (const row of rows) remove.run(row.tableName, row.rowId);
+/**
+ * Accepted by the server: stop tracking it.
+ *
+ * Returns how many were actually dropped. A row edited again while the server
+ * was answering stays queued, so the newer edit is not lost.
+ */
+export function markSent(db: BetterSqlite3.Database, rows: readonly QueuedRow[]): number {
+  let dropped = 0;
+  for (const row of rows) {
+    if (deleteQueuedIfUnchanged(db, row.tableName, row.rowId, row.queuedAt)) dropped++;
+  }
+  return dropped;
 }
 
-const MAX_ATTEMPTS = 10;
+export const MAX_ATTEMPTS = 10;
 
 /**
  * Rejected: count the attempt and set it aside once it is clearly hopeless.
  *
- * Without the dead lane, one malformed row would be retried forever and
- * nothing behind it would ever be sent.
+ * Only a refusal from the server counts. Being offline does not, or a shop
+ * with a week of bad internet would come back to a queue full of rows marked
+ * dead — without the dead lane, though, one malformed row would be retried
+ * forever and nothing behind it would ever be sent.
  */
 export function markFailed(
   db: BetterSqlite3.Database,
@@ -145,44 +155,45 @@ export function markFailed(
 ): { dead: boolean } {
   const attempts = row.attempts + 1;
   const dead = attempts >= MAX_ATTEMPTS;
-  db.prepare(
-    `UPDATE sync_outbox
-        SET attempts = ?, status = ?, last_error = ?
-      WHERE table_name = ? AND row_id = ?`,
-  ).run(attempts, dead ? 'dead' : 'failed', error.slice(0, 500), row.tableName, row.rowId);
+  updateQueuedFailure(
+    db,
+    row.tableName,
+    row.rowId,
+    row.queuedAt,
+    attempts,
+    dead ? 'dead' : 'failed',
+    error.slice(0, 500),
+  );
   return { dead };
 }
 
 /** Put the dead lane back in the queue, for after a fix has been deployed. */
 export function retryDead(db: BetterSqlite3.Database): number {
-  const result = db
-    .prepare(
-      `UPDATE sync_outbox SET status = 'pending', attempts = 0, last_error = NULL
-        WHERE status = 'dead'`,
-    )
-    .run();
-  return result.changes;
+  return requeueDead(db);
 }
 
 // --- Conflicts -------------------------------------------------------------
 
 export function recordConflict(
   db: BetterSqlite3.Database,
-  input: { id: string; tableName: string; rowId: string; detail: string; mine?: unknown; theirs?: unknown },
+  input: {
+    id?: string;
+    tableName: string;
+    rowId: string;
+    detail: string;
+    mine?: unknown;
+    theirs?: unknown;
+  },
 ): void {
-  db.prepare(
-    `INSERT INTO sync_conflicts (id, table_name, row_id, mine_json, theirs_json, detail, seen, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, 0, ?)
-     ON CONFLICT (id) DO NOTHING`,
-  ).run(
-    input.id,
-    input.tableName,
-    input.rowId,
-    input.mine === undefined ? null : JSON.stringify(input.mine),
-    input.theirs === undefined ? null : JSON.stringify(input.theirs),
-    input.detail,
-    nowIso(),
-  );
+  insertConflict(db, {
+    id: input.id ?? uuidv7(),
+    tableName: input.tableName,
+    rowId: input.rowId,
+    mineJson: input.mine === undefined ? null : JSON.stringify(input.mine),
+    theirsJson: input.theirs === undefined ? null : JSON.stringify(input.theirs),
+    detail: input.detail,
+    createdAt: nowIso(),
+  });
 }
 
 export interface ConflictRow {
@@ -194,20 +205,7 @@ export interface ConflictRow {
 }
 
 export function listConflicts(db: BetterSqlite3.Database, limit = 50): ConflictRow[] {
-  const rows = db
-    .prepare(
-      `SELECT id, table_name, row_id, detail, created_at
-         FROM sync_conflicts ORDER BY created_at DESC LIMIT ?`,
-    )
-    .all(limit) as Array<{
-    id: string;
-    table_name: string;
-    row_id: string;
-    detail: string;
-    created_at: string;
-  }>;
-
-  return rows.map((row) => ({
+  return selectConflicts(db, limit).map((row) => ({
     id: row.id,
     tableName: row.table_name,
     rowId: row.row_id,
@@ -217,5 +215,5 @@ export function listConflicts(db: BetterSqlite3.Database, limit = 50): ConflictR
 }
 
 export function markConflictsSeen(db: BetterSqlite3.Database): void {
-  db.prepare(`UPDATE sync_conflicts SET seen = 1 WHERE seen = 0`).run();
+  markAllConflictsSeen(db);
 }

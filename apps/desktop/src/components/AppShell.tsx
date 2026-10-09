@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { formatDateTime, type Permission } from '@pos/shared';
 import { useSession } from '@/lib/session';
+import { SyncPill } from '@/components/SyncPill';
 
 export type ScreenId =
   | 'billing'
@@ -79,6 +80,8 @@ export function AppShell({ shopName, screen, onNavigate, children }: AppShellPro
             );
           })}
         </ul>
+
+        <SyncPill />
 
         <div className="border-t border-white/10 p-4">
           <p className="text-base font-medium">{user.fullName}</p>

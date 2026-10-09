@@ -3,9 +3,10 @@
 Point-of-sale for **Al Hamza Electronics — Dina**, an electronics and spare-parts
 shop in Punjab, Pakistan.
 
-Runs on one Windows PC at the counter and works with no internet at all. Stage 2
-will mirror everything to the cloud so the owner can see the shop from a phone;
-Stage 3 adds the web portal.
+Runs on one Windows PC at the counter and works with no internet at all. When
+there is a connection it mirrors everything to a Postgres database in the cloud,
+so the shop can be seen from somewhere other than the counter. Stage 3 adds the
+web portal that reads it.
 
 ---
 
@@ -14,7 +15,7 @@ Stage 3 adds the web portal.
 ```bash
 npm install          # also rebuilds better-sqlite3 for Electron's ABI
 npm run dev          # start the app with hot reload
-npm test             # 138 tests across both packages
+npm test             # 248 tests across both packages
 npm run typecheck    # both the Electron side and the renderer
 npm run build:win    # produces apps/desktop/release/Al Hamza POS Setup <version>.exe
 ```
@@ -22,9 +23,14 @@ npm run build:win    # produces apps/desktop/release/Al Hamza POS Setup <version
 First launch asks for the shop details and creates the owner's account. After
 that it is a PIN to sign in.
 
-While developing, `dev.seed` fills the database with a realistic shop — 42 parts
-with Dina prices, six customers with balances, a week of trading. It is
-registered only when the app is unpackaged, so it cannot reach a real shop.
+The database starts empty. The shop's own catalogue is loaded from the Items
+screen, by CSV import or by hand.
+
+The Supabase schema is separate:
+
+```bash
+npx supabase db push    # applies supabase/migrations to the cloud database
+```
 
 ---
 
@@ -36,8 +42,10 @@ apps/desktop
   electron/main     the only process that touches the database
     db/             schema, migrations, repositories (all SQL lives here)
     services/       business rules and transactions
+      sync/           the cloud: sign-in, transport, offsite backup
     ipc/            the single door the UI talks through
   src/              React renderer — knows nothing but what it is told
+supabase/migrations  the cloud schema, its access rules and the sync function
 ```
 
 **The renderer is untrusted.** `contextIsolation` on, `nodeIntegration` off,
@@ -72,6 +80,43 @@ discount, `F9` rate, `F12` pay, `Ctrl+Enter` for an exact-cash sale — which is
 most of them. Paying less than the total is not an error: the remainder goes on
 the customer's udhaar, and the dialog shows what they will owe before it saves.
 
+### Sync
+
+One HTTP call to one Postgres function, `sync_v1`: send what changed here,
+receive what changed there, in a single transaction. A bill and its lines have
+to land together, and on a bad connection one request succeeds far more often
+than eight.
+
+The rules live in the database rather than the app, because the app on the shop
+counter cannot be force-updated — whatever version is running out there, the
+server decides. Three of them matter:
+
+**Stock is never sent as a number.** `items.qty_on_hand` and
+`customers.balance` are sums of `stock_movements` and the ledger, and they are
+stripped from everything that crosses the wire. The cloud has no such columns at
+all — it computes them in a view. An absolute quantity arriving from elsewhere
+could erase a day of offline sales silently, and signed deltas add up to the
+same answer whatever order they arrive in.
+
+**Rows written once cannot conflict.** Sale lines, movements, ledger entries:
+seeing one twice is a retry, not a problem. Only rows that get *edited* — an
+item's price, a customer's phone — need a winner, and that is last-write-wins on
+`updated_at`, clamped to the server's clock so a counter PC running three days
+fast cannot win every conflict forever. The loser is kept and shown in Settings,
+because an owner whose price change vanished deserves to know why.
+
+**A change not yet accepted is never overwritten.** The server echoes back what
+it was just sent; if the row was edited again in the meantime, writing that echo
+would quietly undo the newer edit and then push the old value back. The outbox is
+the record of what has not been accepted, and it is checked before anything from
+the server is written.
+
+Queued by SQLite triggers rather than by the services, so a new service cannot
+forget. A flag in `sync_state` stands the triggers down while a batch from the
+server is being applied, which is what stops a pulled row bouncing straight
+back. Being offline costs a row nothing; only a refusal counts against it, and
+after ten refusals one row is set aside so the rest can go.
+
 ---
 
 ## Data safety
@@ -84,6 +129,16 @@ the customer's udhaar, and the dialog shows what they will owe before it saves.
   transaction, with the database copied aside before the first pending one.
 - The database lives in `userData`, never beside the executable, so an update
   cannot take the shop's data with it.
+- A gzipped copy of the database goes to a private cloud bucket about once a
+  day, kept for thirty days.
+
+Three different things, worth not confusing:
+
+| | covers | cannot |
+|---|---|---|
+| Local backups | a mistake, a bad migration | the computer being lost |
+| The cloud tables | the computer being lost | undo anything — they are a replica, and a mistake is copied up within the minute |
+| The offsite file | the computer being lost *and* a mistake | be restored without someone deciding to |
 
 ---
 
@@ -96,6 +151,8 @@ the customer's udhaar, and the dialog shows what they will owe before it saves.
       register as their opening balance.
 - [ ] Run a backup and **restore it once**, on purpose. An untested backup is not
       a backup.
+- [ ] Connect the computer in Settings → *Seeing the shop from a phone*, and
+      watch the rail go from "Phone view not set up" to "Up to date".
 
 The installer is unsigned — a code-signing certificate is not worth it for one
 machine — so Windows SmartScreen will warn on first install. Click *More info →

@@ -19,11 +19,27 @@ An `UPDATE items SET qty_on_hand = ?` outside those helpers is a bug.
 return or a void, each its own event.
 
 **Never edit a shipped migration.** Add `00N_*.ts` in `db/migrations/` and
-register it. The shop's database is already at the old version.
+register it. The shop's database is already at the old version. The same goes
+for `supabase/migrations/` — those are applied to the live cloud database, and
+editing one desynchronises it.
 
 **SQL lives only in `db/repos/`.** Services call repositories; they do not write
-queries. This is what lets Stage 2 mirror to Postgres without touching business
+queries. This is what let the cloud mirror be added without touching business
 logic.
+
+**Nothing derived crosses the wire.** `items.qty_on_hand` and
+`customers.balance` are stripped from every sync payload by
+`stripUnsyncable`, and the cloud has no such columns — it computes them in a
+view. Adding another cached total means adding it to `DERIVED_COLUMNS` in
+`packages/shared/src/sync.ts` in the same change. An absolute quantity arriving
+from elsewhere erases offline sales silently, which is the one failure here
+nobody would notice until the stock count.
+
+**Sync conflict rules live in Postgres, not the app.** `sync_v1` decides;
+`packages/shared/src/sync.ts` holds the same rules as pure functions so both
+ends can be reasoned about and tested. If you change one, change both — and
+remember the counter PC cannot be force-updated, so the server must keep
+accepting payloads from a client that knows fewer columns than it does.
 
 **The main process is the security boundary.** Every operation declares its
 `permission` in `ipc/ops/`. The renderer's `can()` only decides what to render.
@@ -48,12 +64,19 @@ that happens, and the same word is used all the way through a flow.
 
 ## Testing
 
-`npm test` runs 138 tests. The ones that matter are the money and ledger unit
+`npm test` runs 248 tests. The ones that matter are the money and ledger unit
 tests in `packages/shared`, and the transaction tests in
 `apps/desktop/electron/main/services/*.test.ts` — which run the real services
 against an in-memory SQLite via `testing/harness.ts`. If you touch
 `saleService`, `returnService`, `stockService` or `customerService`, those tests
 are the spec.
+
+For sync, `syncEngine.test.ts` drives the real engine against
+`testing/fakeSyncServer.ts` — a second implementation of the same contract, so
+the tests check the engine against the protocol rather than against itself. It
+reproduces the behaviours that are easy to fake away and expensive to get
+wrong: a refused row aborts the whole request, the server echoes back what it
+was sent, and a row can be edited while the server is still answering.
 
 Before calling a change done, run the app (`npm run dev`) and do the thing in the
 UI. The main process and the renderer can typecheck perfectly and still not be

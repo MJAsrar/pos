@@ -79,8 +79,10 @@ describe('stripUnsyncable', () => {
 
 describe('decideMasterWrite', () => {
   const now = '2026-10-10T12:00:00.000Z';
-  const pc = { deviceId: 'counter-pc' };
-  const web = { deviceId: 'website' };
+  // Named for which side the edit came from, which the rule no longer needs
+  // to know: the server is the only thing that decides.
+  const pc = {};
+  const web = {};
 
   it('accepts a change to a row the server has never seen', () => {
     expect(decideMasterWrite({ ...pc, updatedAt: now }, null, now).outcome).toBe('accept');
@@ -124,22 +126,25 @@ describe('decideMasterWrite', () => {
   });
 
   it('a clamped clock cannot beat a genuinely newer change', () => {
-    // The PC claims the future; the website edited a minute ago. Clamping
-    // means the website still wins.
+    // The PC claims a minute into the future; the change on the website is one
+    // millisecond newer than the server's clock. Clamping pulls the PC back,
+    // so the wrong clock wins it nothing.
     const future = new Date(Date.parse(now) + 60_000).toISOString();
     const decision = decideMasterWrite(
       { ...pc, updatedAt: future },
-      { ...web, updatedAt: now },
+      { ...web, updatedAt: '2026-10-10T12:00:00.001Z' },
       now,
     );
     expect(decision.outcome).toBe('conflict');
   });
 
-  it('breaks an exact tie the same way on both sides', () => {
-    const a = decideMasterWrite({ ...web, updatedAt: now }, { ...pc, updatedAt: now }, now);
-    const b = decideMasterWrite({ ...pc, updatedAt: now }, { ...web, updatedAt: now }, now);
-    // Exactly one of them wins, deterministically, so they cannot flip-flop.
-    expect([a.outcome, b.outcome].sort()).toEqual(['accept', 'conflict']);
+  it('accepts an exact tie rather than losing the edit', () => {
+    // The realistic tie is one device editing the same row twice inside a
+    // millisecond, with a sync in between. Refusing the second edit would
+    // lose it, and would blame a device that never touched it.
+    const mine = decideMasterWrite({ ...pc, updatedAt: now }, { ...web, updatedAt: now }, now);
+    const theirs = decideMasterWrite({ ...web, updatedAt: now }, { ...pc, updatedAt: now }, now);
+    expect([mine.outcome, theirs.outcome]).toEqual(['accept', 'accept']);
   });
 
   it('rejects a timestamp it cannot read rather than guessing', () => {

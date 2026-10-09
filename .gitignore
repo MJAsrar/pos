@@ -17,3 +17,4 @@ coverage/
 *.db
 *.db-wal
 *.db-shm
+supabase/.temp/

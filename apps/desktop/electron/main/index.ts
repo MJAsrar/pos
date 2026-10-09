@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { closeDatabase, getDb, migrationResult, openDatabase } from './db/connection.js';
 import { createBackup } from './services/backupService.js';
 import { startUpdateChecks, stopUpdateChecks } from './services/updateService.js';
+import { startSyncScheduler, stopSyncScheduler } from './services/syncScheduler.js';
 import { registerAllOps } from './ipc/ops/index.js';
 import { contentSecurityPolicy } from './security.js';
 import { callOp, registeredOps } from './ipc/router.js';
@@ -133,6 +134,7 @@ if (!gotLock) {
 
     createWindow();
     startUpdateChecks();
+    startSyncScheduler();
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -193,6 +195,7 @@ app.on('before-quit', (event) => {
   shuttingDown = true;
 
   stopUpdateChecks();
+  stopSyncScheduler();
 
   void backupQuietly('shutdown').finally(() => {
     // Drop the session first: if the app is reopened, nobody is silently still

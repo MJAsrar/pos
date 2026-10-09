@@ -412,6 +412,47 @@ export interface DateRangeInput {
 
 // --- Operations ------------------------------------------------------------
 
+export interface SyncRun {
+  sent: number;
+  received: number;
+  conflicts: number;
+  setAside: number;
+  rounds: number;
+  reachedServer: boolean;
+  problem: string | null;
+  skipped: boolean;
+}
+
+export interface SyncStatus {
+  pending: number;
+  failed: number;
+  dead: number;
+  unseenConflicts: number;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+  /** False until this computer has been signed in to the cloud. */
+  configured: boolean;
+  account: string | null;
+  busy: boolean;
+  /** Ready-made line for the indicator, e.g. "14 changes waiting". */
+  summary: string;
+  lastRun: SyncRun | null;
+}
+
+export interface SyncConflict {
+  id: string;
+  tableName: string;
+  rowId: string;
+  detail: string;
+  createdAt: string;
+}
+
+export interface SyncQueue {
+  rows: Array<{ tableName: string; rowId: string; attempts: number; queuedAt: string }>;
+  cursor: number;
+  deviceId: string | null;
+}
+
 export const api = {
   // Session
   appStatus: () => call<AppStatus>('app.status'),
@@ -610,4 +651,17 @@ export const api = {
 
   audit: (options?: { entity?: string; entityId?: string; limit?: number }) =>
     call<AuditEntry[]>('audit.list', options),
+
+  // Cloud
+  syncStatus: () => call<SyncStatus>('sync.status'),
+  syncNow: () => call<SyncRun>('sync.now'),
+  syncResumed: () =>
+    call<{ sent: number; received: number; problem: string | null }>('sync.resumed'),
+  cloudSignIn: (email: string, password: string) =>
+    call<{ email: string; run: SyncRun }>('sync.signIn', { email, password }),
+  cloudSignOut: () => call<{ ok: true }>('sync.signOut'),
+  syncConflicts: (limit?: number) => call<SyncConflict[]>('sync.conflicts', { limit }),
+  acknowledgeSyncConflicts: () => call<{ ok: true }>('sync.acknowledgeConflicts'),
+  retrySyncQueue: () => call<{ requeued: number }>('sync.retryDead'),
+  syncQueue: (limit?: number) => call<SyncQueue>('sync.peekQueue', { limit }),
 };
