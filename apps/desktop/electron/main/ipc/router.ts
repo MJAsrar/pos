@@ -1,6 +1,12 @@
 import type BetterSqlite3 from 'better-sqlite3';
 import { z } from 'zod';
-import { PermissionDeniedError, can, type Permission } from '@pos/shared';
+import {
+  PermissionDeniedError,
+  SyncAuthError,
+  SyncServerError,
+  can,
+  type Permission,
+} from '@pos/shared';
 import { getDb } from '../db/connection.js';
 import { AppError } from '../errors.js';
 import { AuthRequiredError, getSessionUser, type SessionUser } from '../session.js';
@@ -145,6 +151,15 @@ function toOpError(cause: unknown): OpError {
   }
   if (cause instanceof AuthRequiredError) {
     return { code: 'auth_required', message: cause.message };
+  }
+  // Both already say what went wrong and what to do about it, in the shop's
+  // own words. Falling through to the generic handler below would bury that
+  // under "Something went wrong", which tells a person nothing.
+  if (cause instanceof SyncAuthError) {
+    return { code: 'cloud_sign_in', message: cause.message };
+  }
+  if (cause instanceof SyncServerError) {
+    return { code: 'cloud_refused', message: cause.message };
   }
   if (cause instanceof Error) {
     // Unexpected: log the real detail here, hand the renderer something calm.

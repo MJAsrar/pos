@@ -122,10 +122,14 @@ async function tokenRequest(
   const parsed = (await response.json().catch(() => ({}))) as TokenResponse;
 
   if (!response.ok) {
+    // The cloud's own wording ("Invalid login credentials") goes to the log,
+    // not to the person: it tells them nothing they can act on.
     const detail = parsed.error_description ?? parsed.msg ?? parsed.error ?? '';
+    console.error(`[cloud] ${grant} sign-in refused: ${response.status} ${detail}`);
+
     throw new SyncAuthError(
       grant === 'password'
-        ? `That email and password were not accepted.${detail ? ` (${detail})` : ''}`
+        ? 'That email and password were not accepted. Check both and try again.'
         : 'This computer needs to be signed in to the cloud again.',
     );
   }
