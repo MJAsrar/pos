@@ -40,3 +40,6 @@ publish:
   - provider: github
     owner: MJAsrar
     repo: pos
+    # Published, not draft: electron-updater cannot see draft releases, so a
+    # draft would look like a successful publish that never reaches the shop.
+    releaseType: release
