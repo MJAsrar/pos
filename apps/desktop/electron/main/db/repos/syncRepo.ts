@@ -374,6 +374,7 @@ export function insertConflict(
 export function selectConflicts(
   db: BetterSqlite3.Database,
   limit: number,
+  unseenOnly: boolean,
 ): Array<{
   id: string;
   table_name: string;
@@ -384,7 +385,9 @@ export function selectConflicts(
   return db
     .prepare(
       `SELECT id, table_name, row_id, detail, created_at
-         FROM sync_conflicts ORDER BY created_at DESC LIMIT ?`,
+         FROM sync_conflicts
+        ${unseenOnly ? 'WHERE seen = 0' : ''}
+        ORDER BY created_at DESC LIMIT ?`,
     )
     .all(limit) as Array<{
     id: string;

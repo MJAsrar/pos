@@ -84,7 +84,7 @@ export function CloudSection(): React.JSX.Element {
         </p>
       )}
 
-      <Overruled />
+      <Overruled unseen={state.unseenConflicts} />
     </div>
   );
 }
@@ -155,9 +155,16 @@ function SignIn({ onDone }: { onDone: () => void }): React.JSX.Element {
  * and the one who lost should be able to find out rather than wonder why the
  * price "went back".
  */
-function Overruled(): React.JSX.Element | null {
+function Overruled({ unseen }: { unseen: number }): React.JSX.Element | null {
   const queryClient = useQueryClient();
-  const conflicts = useQuery({ queryKey: ['syncConflicts'], queryFn: () => api.syncConflicts(20) });
+  // The count is part of the key on purpose. A clash can arrive while this
+  // screen is open — it is exactly the screen someone watches when sync looks
+  // wrong — and without this the list would stay as it was when the page
+  // loaded, which was usually empty.
+  const conflicts = useQuery({
+    queryKey: ['syncConflicts', unseen],
+    queryFn: () => api.syncConflicts(20),
+  });
 
   const acknowledge = useMutation({
     mutationFn: api.acknowledgeSyncConflicts,

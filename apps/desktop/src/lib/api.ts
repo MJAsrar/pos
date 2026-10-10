@@ -672,7 +672,8 @@ export const api = {
   cloudSignIn: (email: string, password: string) =>
     call<{ email: string; run: SyncRun }>('sync.signIn', { email, password }),
   cloudSignOut: () => call<{ ok: true }>('sync.signOut'),
-  syncConflicts: (limit?: number) => call<SyncConflict[]>('sync.conflicts', { limit }),
+  syncConflicts: (limit?: number, includeSeen?: boolean) =>
+    call<SyncConflict[]>('sync.conflicts', { limit, includeSeen }),
   acknowledgeSyncConflicts: () => call<{ ok: true }>('sync.acknowledgeConflicts'),
   retrySyncQueue: () => call<{ requeued: number }>('sync.retryDead'),
   syncQueue: (limit?: number) => call<SyncQueue>('sync.peekQueue', { limit }),

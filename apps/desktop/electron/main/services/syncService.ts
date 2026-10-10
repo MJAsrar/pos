@@ -204,8 +204,19 @@ export interface ConflictRow {
   createdAt: string;
 }
 
-export function listConflicts(db: BetterSqlite3.Database, limit = 50): ConflictRow[] {
-  return selectConflicts(db, limit).map((row) => ({
+/**
+ * Clashes to show the owner.
+ *
+ * Only the ones nobody has looked at, by default. The screen that shows these
+ * has a button saying "I have seen these" — if the list kept them afterwards,
+ * pressing it would appear to do nothing.
+ */
+export function listConflicts(
+  db: BetterSqlite3.Database,
+  limit = 50,
+  options: { includeSeen?: boolean } = {},
+): ConflictRow[] {
+  return selectConflicts(db, limit, !options.includeSeen).map((row) => ({
     id: row.id,
     tableName: row.table_name,
     rowId: row.row_id,

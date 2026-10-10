@@ -104,8 +104,14 @@ export function registerSyncOps(): void {
   defineOp({
     op: 'sync.conflicts',
     permission: 'settings.manage',
-    input: z.object({ limit: z.number().int().min(1).max(200).optional() }).optional(),
-    handler: (input, ctx) => listConflicts(ctx.db, input?.limit ?? 50),
+    input: z
+      .object({
+        limit: z.number().int().min(1).max(200).optional(),
+        includeSeen: z.boolean().optional(),
+      })
+      .optional(),
+    handler: (input, ctx) =>
+      listConflicts(ctx.db, input?.limit ?? 50, { includeSeen: input?.includeSeen ?? false }),
   });
 
   defineOp({
