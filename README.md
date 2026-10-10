@@ -112,9 +112,33 @@ udhaar, and the six reports. Changing a price or correcting a count goes
 through `sync_v1`; so does recording a payment, which travels as the receipt
 and the ledger entry together because they are one event.
 
+Live at **https://al-hamza-pos.vercel.app**.
+
 ```bash
 npm run dev --workspace=@pos/web    # http://localhost:3000
+npx vercel deploy --prod --yes      # from the repo root
 ```
+
+Deploying it has three settings that are not obvious, all held on the Vercel
+project rather than in a file:
+
+- **Root directory `apps/web`.** It is a workspace, so a build that only sees
+  `apps/web` cannot resolve `@pos/shared`.
+- **Install only what the website needs** —
+  `npm install --include-workspace-root --workspace=@pos/shared
+  --workspace=@pos/web`. Installing the whole workspace would download Electron
+  and build `better-sqlite3` on a Linux builder, for an app that uses neither.
+- **Build `@pos/shared` first.** It resolves to its compiled output, which does
+  not exist until something builds it.
+
+`.vercelignore` keeps the upload to the website: the desktop release folder
+alone is half a gigabyte, which exceeds Vercel's limit on its own.
+
+Vercel's own authentication is switched off for this project. It is on by
+default, and it would have meant signing in to Vercel before reaching the
+shop's sign-in — on a phone, which in practice means a Vercel account being
+passed around. The real gate is the shop account and row-level security: a
+visitor who does not sign in sees a sign-in form and can read nothing.
 
 Staff accounts are the one thing with a server route behind them. A PIN has to
 become an Argon2 hash somewhere the browser cannot be made to skip, and the
@@ -231,11 +255,10 @@ For the cloud and the owner view:
       an account in Supabase Auth, then a `shop_members` row with their
       `pos_user_id` set to their counter account, or they can look but not
       change anything.
-- [ ] Deploy `apps/web` to Vercel with the **root directory set to
-      `apps/web`** — it is a workspace, so a build from the repo root will not
-      find it. There is nothing to configure beyond that: no environment
-      variables, because the project address and publishable key are in the
-      source on purpose and row-level security is what protects the data.
+- [x] Deploy `apps/web` to Vercel — live at https://al-hamza-pos.vercel.app.
+      See *The owner view* above for the three project settings it needs.
+- [ ] Run `vercel git connect` if every push should deploy itself. It needs
+      authorising in a browser once.
 
 The installer is unsigned — a code-signing certificate is not worth it for one
 machine — so Windows SmartScreen will warn on first install. Click *More info →

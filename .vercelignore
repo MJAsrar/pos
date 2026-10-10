@@ -1,0 +1,18 @@
+# Only the website is deployed, so none of this needs uploading. The desktop
+# release folder alone is half a gigabyte of Electron and an installer.
+apps/desktop
+supabase
+
+# Build outputs, rebuilt on the server.
+**/node_modules
+**/dist
+**/out
+**/.next
+*.tsbuildinfo
+
+# Shop data never leaves the counter.
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.log
