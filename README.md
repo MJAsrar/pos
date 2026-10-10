@@ -15,7 +15,7 @@ web portal that reads it.
 ```bash
 npm install          # also rebuilds better-sqlite3 for Electron's ABI
 npm run dev          # start the app with hot reload
-npm test             # 248 tests across both packages
+npm test             # 291 tests across the workspace
 npm run typecheck    # both the Electron side and the renderer
 npm run build:win    # produces apps/desktop/release/Al Hamza POS Setup <version>.exe
 ```
@@ -37,7 +37,7 @@ npx supabase db push    # applies supabase/migrations to the cloud database
 ## How it is put together
 
 ```
-packages/shared     money, permissions, bill totals, ledger rules
+packages/shared     money, permissions, bill totals, ledger rules, the figures
 apps/desktop
   electron/main     the only process that touches the database
     db/             schema, migrations, repositories (all SQL lives here)
@@ -45,6 +45,7 @@ apps/desktop
       sync/           the cloud: sign-in, transport, offsite backup
     ipc/            the single door the UI talks through
   src/              React renderer — knows nothing but what it is told
+apps/web            the owner view: Next.js, reads the cloud copy
 supabase/migrations  the cloud schema, its access rules and the sync function
 ```
 
@@ -79,6 +80,36 @@ term opens a fuzzy search. `F2` customer, `F3` find item, `F5` quantity, `F6`
 discount, `F9` rate, `F12` pay, `Ctrl+Enter` for an exact-cash sale — which is
 most of them. Paying less than the total is not an error: the remainder goes on
 the customer's udhaar, and the dialog shows what they will owe before it saves.
+
+### The owner view
+
+`apps/web` is what the owner opens on their phone. It signs in as them and
+reads the cloud copy directly; there is no server of ours in between, because
+row-level security is already the boundary and a second one written here could
+only disagree with the first.
+
+It cannot write that way, and that is deliberate — the database refuses a
+direct write even from a signed-in member, so every change the website makes
+goes through `sync_v1` and meets the same conflict rules the counter does.
+Worth knowing when working on it: PostgREST answers a blocked update with
+`200` and an empty result rather than an error, so a 2xx from it does not mean
+anything happened.
+
+The figures are not recomputed here. `summarisePeriod` in `packages/shared`
+turns rows into takings, profit and what went on udhaar, and both ends call it
+— only the gathering of rows differs. Returns come off both the takings and
+the cost, cancelled bills are excluded, and cost comes from the snapshot on
+each sale line. If the phone and the till ever disagree, one of them is
+looking at a different day rather than doing different arithmetic.
+
+A shop day is a day in Dina, stated explicitly rather than taken from
+whichever machine is running: the counter keeps Pakistan time but a web server
+does not, and a sale rung at 2am would otherwise land on the previous day for
+the owner and the right one for the cashier.
+
+```bash
+npm run dev --workspace=@pos/web    # http://localhost:3000
+```
 
 ### Sync
 

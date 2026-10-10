@@ -18,3 +18,5 @@ coverage/
 *.db-wal
 *.db-shm
 supabase/.temp/
+.next/
+next-env.d.ts

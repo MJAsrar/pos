@@ -5,4 +5,5 @@ export * from './permissions.js';
 export * from './types/index.js';
 export * from './domain/sale.js';
 export * from './domain/ledger.js';
+export * from './domain/report.js';
 export * from './sync.js';

@@ -1,5 +1,10 @@
 import type BetterSqlite3 from 'better-sqlite3';
-import { rangeToTimestamps, type DateRange, type PaymentMethod } from '@pos/shared';
+import {
+  rangeToTimestamps,
+  summarisePeriod,
+  type DateRange,
+  type PaymentMethod,
+} from '@pos/shared';
 import { expensesByCategory, expensesTotal } from './expenseService.js';
 
 /**
@@ -123,24 +128,26 @@ export function salesSummary(db: BetterSqlite3.Database, range: DateRange): Sale
     net_sales: number;
   }>;
 
-  const expenses = expensesTotal(db, range.from, range.to);
-  const netSales = totals.net - returned.total;
-  const costOfGoods = totals.cost - returned.cost;
-  const grossProfit = netSales - costOfGoods;
+  // The arithmetic lives in the shared package, because the owner reads these
+  // same figures on their phone from a different database. Only the gathering
+  // of rows differs between the two.
+  const figures = summarisePeriod({
+    bills: {
+      count: totals.bill_count,
+      gross: totals.gross,
+      discounts: totals.discounts,
+      total: totals.net,
+      costTotal: totals.cost,
+      paid: totals.paid,
+      credit: totals.credit,
+    },
+    returns: { total: returned.total, costTotal: returned.cost },
+    expenses: expensesTotal(db, range.from, range.to),
+  });
 
   return {
-    billCount: totals.bill_count,
+    ...figures,
     itemCount: Math.round(items.qty * 1000) / 1000,
-    grossSales: totals.gross,
-    discounts: totals.discounts,
-    returns: returned.total,
-    netSales,
-    costOfGoods,
-    grossProfit,
-    expenses,
-    netProfit: grossProfit - expenses,
-    cashTaken: totals.paid,
-    onCredit: totals.credit,
     byMethod: byMethod.map((row) => ({
       method: row.method,
       billCount: row.bill_count,

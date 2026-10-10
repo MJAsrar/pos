@@ -1,0 +1,34 @@
+@import 'tailwindcss';
+
+/*
+ * The same palette as the counter, so the owner is not looking at a different
+ * product on their phone from the one on the shop computer.
+ */
+@theme {
+  --color-paper: #f6f7f9;
+  --color-ink: #16181d;
+  --color-ink-soft: #5b6472;
+  --color-ink-faint: #8b95a3;
+  --color-rule: #e3e7ed;
+  --color-board: #2f6fed;
+  --color-due: #c2410c;
+  --color-due-tint: #fff4ed;
+  --color-kept: #047857;
+
+  --text-meta: 0.8125rem;
+  --text-row: 0.9375rem;
+  --text-section: 1.0625rem;
+  --text-title: 1.375rem;
+  --text-figure: 1.75rem;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
