@@ -17,10 +17,12 @@ export const viewport: Viewport = {
   maximumScale: 5,
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+// `LayoutProps` is generated from the route tree and available globally, so
+// the slots are typed from the directories rather than declared by hand.
+export default function RootLayout(props: LayoutProps<'/'>) {
   return (
     <html lang="en">
-      <body className="min-h-full">{children}</body>
+      <body className="min-h-full">{props.children}</body>
     </html>
   );
 }
