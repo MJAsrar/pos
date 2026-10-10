@@ -46,6 +46,7 @@ const PAGES = [
   { href: '/', label: 'Today' },
   { href: '/items', label: 'Items' },
   { href: '/customers', label: 'Customers' },
+  { href: '/reports', label: 'Reports' },
 ] as const;
 
 function Nav({ onSignOut }: { onSignOut: () => void }) {

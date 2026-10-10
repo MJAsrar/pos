@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countToMovement, roundQty } from './stock.js';
+import { countToMovement, daysSinceSale, isNotMoving, roundQty } from './stock.js';
 
 /**
  * The rule these protect is the one that would be invisible if broken: an
@@ -50,5 +50,39 @@ describe('roundQty', () => {
     expect(roundQty(1.23456)).toBe(1.235);
     expect(roundQty(2)).toBe(2);
     expect(roundQty(-0.0004)).toBe(-0);
+  });
+});
+
+describe('isNotMoving', () => {
+  const now = new Date('2026-10-10T12:00:00.000Z');
+
+  it('counts an item that has never sold', () => {
+    // The one the owner most wants to find: bought once, sat there since.
+    expect(isNotMoving(null, 90, now)).toBe(true);
+  });
+
+  it('leaves something that sold recently alone', () => {
+    expect(isNotMoving('2026-10-01T10:00:00.000Z', 90, now)).toBe(false);
+  });
+
+  it('catches something that has not sold in the window', () => {
+    expect(isNotMoving('2026-05-01T10:00:00.000Z', 90, now)).toBe(true);
+  });
+
+  it('treats an unreadable date as not moving rather than as recent', () => {
+    // Erring the other way would quietly drop the row from the report.
+    expect(isNotMoving('not a date', 90, now)).toBe(true);
+  });
+});
+
+describe('daysSinceSale', () => {
+  const now = new Date('2026-10-10T12:00:00.000Z');
+
+  it('counts whole days', () => {
+    expect(daysSinceSale('2026-10-01T12:00:00.000Z', now)).toBe(9);
+  });
+
+  it('says nothing for an item that never sold', () => {
+    expect(daysSinceSale(null, now)).toBeNull();
   });
 });

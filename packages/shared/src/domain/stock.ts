@@ -31,3 +31,30 @@ export function countToMovement(countedQty: number, currentQty: number): CountOu
   const delta = roundQty(counted - roundQty(currentQty));
   return { delta, qtyAfter: counted, unchanged: delta === 0 };
 }
+
+/**
+ * Whether an item has stopped moving.
+ *
+ * The case worth stating: an item that has *never* sold is not moving either.
+ * Reading that as "no sale date, so nothing to compare, so leave it out" hides
+ * exactly the stock the owner most wants to find — the box that was bought
+ * once and has sat there since.
+ */
+export function isNotMoving(
+  lastSoldAt: string | null,
+  days: number,
+  now: Date = new Date(),
+): boolean {
+  if (!lastSoldAt) return true;
+  const sold = Date.parse(lastSoldAt);
+  if (!Number.isFinite(sold)) return true;
+  return sold < now.getTime() - days * 86_400_000;
+}
+
+/** How long since it last sold, or null if it never has. */
+export function daysSinceSale(lastSoldAt: string | null, now: Date = new Date()): number | null {
+  if (!lastSoldAt) return null;
+  const sold = Date.parse(lastSoldAt);
+  if (!Number.isFinite(sold)) return null;
+  return Math.floor((now.getTime() - sold) / 86_400_000);
+}

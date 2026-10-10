@@ -15,7 +15,7 @@ web portal that reads it.
 ```bash
 npm install          # also rebuilds better-sqlite3 for Electron's ABI
 npm run dev          # start the app with hot reload
-npm test             # 291 tests across the workspace
+npm test             # 305 tests across the workspace
 npm run typecheck    # both the Electron side and the renderer
 npm run build:win    # produces apps/desktop/release/Al Hamza POS Setup <version>.exe
 ```
@@ -107,9 +107,17 @@ whichever machine is running: the counter keeps Pakistan time but a web server
 does not, and a sale rung at 2am would otherwise land on the previous day for
 the owner and the right one for the cashier.
 
+Four pages so far: the day's takings, the catalogue, customers and their
+udhaar, and the six reports. Changing a price or correcting a count goes
+through `sync_v1`; so does recording a payment, which travels as the receipt
+and the ledger entry together because they are one event.
+
 ```bash
 npm run dev --workspace=@pos/web    # http://localhost:3000
 ```
+
+Not built yet: staff accounts, which need a server route because a PIN has to
+be hashed where the browser cannot see it, and export.
 
 ### Sync
 
