@@ -109,3 +109,36 @@ export const FIGURE_LABELS = {
   costOfGoods: 'What the goods cost',
   grossSales: 'Before discounts',
 } as const satisfies Record<keyof PeriodSummary, string>;
+
+/**
+ * The figures as rows for a spreadsheet.
+ *
+ * Shared for the same reason the arithmetic is: the owner may save this from
+ * their phone and the cashier save it at the counter, and the two files must
+ * say the same thing in the same order. Each end adds its own sections after
+ * this block — the counter knows the day-by-day breakdown, the website does
+ * not — but the figures themselves are written once, here.
+ *
+ * Money goes out as a plain number of rupees, because a column of "Rs 1,250"
+ * cannot be added up by whatever the file is opened in, which is the only
+ * reason to want a file.
+ */
+export function figuresCsvRows(
+  summary: PeriodSummary,
+  rupees: (paisa: Paisa) => string,
+): Array<Array<string | number>> {
+  return [
+    ['Figure', 'Rupees'],
+    [FIGURE_LABELS.netSales, rupees(summary.netSales)],
+    [FIGURE_LABELS.costOfGoods, rupees(summary.costOfGoods)],
+    [FIGURE_LABELS.grossProfit, rupees(summary.grossProfit)],
+    [FIGURE_LABELS.expenses, rupees(summary.expenses)],
+    [FIGURE_LABELS.netProfit, rupees(summary.netProfit)],
+    [FIGURE_LABELS.cashTaken, rupees(summary.cashTaken)],
+    [FIGURE_LABELS.onCredit, rupees(summary.onCredit)],
+    [FIGURE_LABELS.returns, rupees(summary.returns)],
+    [FIGURE_LABELS.discounts, rupees(summary.discounts)],
+    [FIGURE_LABELS.grossSales, rupees(summary.grossSales)],
+    [FIGURE_LABELS.billCount, summary.billCount],
+  ];
+}

@@ -15,7 +15,7 @@ web portal that reads it.
 ```bash
 npm install          # also rebuilds better-sqlite3 for Electron's ABI
 npm run dev          # start the app with hot reload
-npm test             # 312 tests across the workspace
+npm test             # 332 tests across the workspace
 npm run typecheck    # both the Electron side and the renderer
 npm run build:win    # produces apps/desktop/release/Al Hamza POS Setup <version>.exe
 ```
@@ -129,7 +129,15 @@ What makes an acceptable PIN lives in `packages/shared` for the same reason
 the money rules do: the counter and the website both ask, and a PIN the till
 would refuse must not slip through from a phone.
 
-Not built yet: export.
+Both ends save a report as one CSV, in `Documents/AlHamzaPOS/reports` at the
+counter and as a download on the website. One file rather than one per report,
+because it gets attached to something and sent. `packages/shared/src/csv.ts`
+writes it, so the two files agree: money goes out as a plain number that can be
+added up, a value beginning with `=` is defused because Excel would otherwise
+execute it, and the file starts with a byte-order mark or Excel on Windows
+reads UTF-8 as the local code page. Profit is left out of the file entirely for
+anyone without `report.view_profit` -- blank columns would still show its
+shape, and a file is the easiest thing in the world to pass on.
 
 ### Sync
 

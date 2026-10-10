@@ -640,7 +640,10 @@ export const api = {
       path,
       confirm: true,
     }),
-  openFolder: (which: 'backups' | 'receipts') => call<{ path: string }>('folder.open', { which }),
+  openFolder: (which: 'backups' | 'receipts' | 'reports') =>
+    call<{ path: string }>('folder.open', { which }),
+  exportReport: (range: { from: string; to: string }) =>
+    call<{ fileName: string; path: string; rows: number }>('report.export', range),
 
   // Receipts
   saleReceipt: (saleId: string) =>

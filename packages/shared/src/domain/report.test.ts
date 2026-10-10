@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FIGURE_LABELS, summarisePeriod, type PeriodInput } from './report.js';
+import { FIGURE_LABELS, figuresCsvRows, summarisePeriod, type PeriodInput } from './report.js';
 
 /**
  * These figures are the ones the owner will compare between their phone and
@@ -130,5 +130,38 @@ describe('summarisePeriod', () => {
     expect(FIGURE_LABELS.netSales).toBe('Takings');
     expect(FIGURE_LABELS.netProfit).toBe('Left over');
     expect(FIGURE_LABELS.onCredit).toBe('Went on udhaar');
+  });
+});
+
+describe('figuresCsvRows', () => {
+  const rupees = (paisa: number) => (paisa / 100).toFixed(2);
+
+  it('writes every figure, so a saved file is not missing one', () => {
+    const summary = summarisePeriod(day());
+    const rows = figuresCsvRows(summary, rupees);
+    // A header plus one row per figure.
+    expect(rows).toHaveLength(Object.keys(summary).length + 1);
+  });
+
+  it('leads with the takings, because that is what gets looked at first', () => {
+    const rows = figuresCsvRows(summarisePeriod(day()), rupees);
+    expect(rows[0]).toEqual(['Figure', 'Rupees']);
+    expect(rows[1]?.[0]).toBe('Takings');
+  });
+
+  it('writes money as a number a spreadsheet can add up', () => {
+    const summary = summarisePeriod(
+      day({ bills: { count: 1, gross: 125_000, discounts: 0, total: 125_000, costTotal: 100_000, paid: 125_000, credit: 0 } }),
+    );
+    const rows = figuresCsvRows(summary, rupees);
+    expect(rows[1]).toEqual(['Takings', '1250.00']);
+    // The bill count is a count, not money.
+    expect(rows.at(-1)).toEqual(['Bills', 1]);
+  });
+
+  it('uses the words the shop uses', () => {
+    const labels = figuresCsvRows(summarisePeriod(day()), rupees).map((row) => row[0]);
+    expect(labels).toContain('Left over');
+    expect(labels).toContain('Went on udhaar');
   });
 });

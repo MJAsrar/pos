@@ -21,7 +21,7 @@ import { chooseImage, readPhoto, setShopLogo } from '../../services/imageService
 import { findLedgerMismatches } from '../../services/customerService.js';
 import { findStockMismatches, repairStockCache } from '../../services/stockService.js';
 import { getSettings, updateSettings } from '../../services/settingsService.js';
-import { backupsDir, receiptsDir } from '../../paths.js';
+import { backupsDir, exportsDir, receiptsDir } from '../../paths.js';
 import { refreshSessionUser } from '../../session.js';
 import { writeAudit } from '../../services/auditService.js';
 
@@ -304,9 +304,14 @@ export function registerAdminOps(): void {
 
   defineOp({
     op: 'folder.open',
-    input: z.object({ which: z.enum(['backups', 'receipts']) }),
+    input: z.object({ which: z.enum(['backups', 'receipts', 'reports']) }),
     handler: async (input) => {
-      const target = input.which === 'backups' ? backupsDir() : receiptsDir();
+      const target =
+        input.which === 'backups'
+          ? backupsDir()
+          : input.which === 'reports'
+            ? exportsDir()
+            : receiptsDir();
       await shell.openPath(target);
       return { path: target };
     },

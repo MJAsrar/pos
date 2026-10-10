@@ -15,6 +15,7 @@ import {
   salesSummary,
   stockValue,
 } from '../../services/reportService.js';
+import { exportSalesReport } from '../../services/exportService.js';
 
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date in YYYY-MM-DD form.');
 const rangeSchema = z.object({ from: localDate, to: localDate });
@@ -27,6 +28,23 @@ const rangeSchema = z.object({ from: localDate, to: localDate });
  * should not be able to read the shop's margin out of an IPC response.
  */
 export function registerReportOps(): void {
+  /**
+   * Save the report as a file the owner can attach to something.
+   *
+   * Profit is left out of the file entirely when the person saving it is not
+   * allowed to see it, rather than blanked: a file is the easiest thing in the
+   * world to pass on, and empty columns would still show the shape of it.
+   */
+  defineOp({
+    op: 'report.export',
+    permission: 'report.view',
+    input: rangeSchema,
+    handler: (input, ctx) =>
+      exportSalesReport(ctx.db, input, {
+        includeProfit: can(ctx.user, 'report.view_profit'),
+      }),
+  });
+
   defineOp({
     op: 'report.sales',
     permission: 'report.view',

@@ -39,6 +39,11 @@ export function receiptsDir(): string {
   return ensureDir(join(documentsDir(), 'receipts'));
 }
 
+/** Where a saved report lands, so the owner can attach it to something. */
+export function exportsDir(): string {
+  return ensureDir(join(documentsDir(), 'reports'));
+}
+
 /** Item photos and the shop logo. Kept in userData so backups stay small. */
 export function photosDir(): string {
   return ensureDir(join(userDataDir(), 'photos'));

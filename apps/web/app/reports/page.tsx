@@ -4,10 +4,15 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   DUE_BUCKET_LABELS,
   FIGURE_LABELS,
+  csvFileName,
+  csvRupees,
+  figuresCsvRows,
   formatDate,
   formatPKR,
   formatQty,
   presetRange,
+  toCsv,
+  type CsvValue,
   type DateRange,
   type PeriodSummary,
 } from '@pos/shared';
@@ -88,10 +93,86 @@ function Reports() {
   }, [preset, load]);
 
   const range = presetRange(preset);
+  const ready = Boolean(figures && sold && stock && owing);
+
+  /**
+   * One file with everything on the page, in the order it appears.
+   *
+   * One file rather than six, because this gets sent to somebody — an
+   * accountant, a brother-in-law who keeps the books — and six attachments is
+   * six chances to send the wrong one. Sections are separated by a blank row,
+   * which every spreadsheet copes with.
+   */
+  function save(): void {
+    if (!figures || !sold || !stock || !owing) return;
+
+    const rows: CsvValue[][] = [
+      ['Al Hamza Electronics'],
+      [range.from === range.to ? formatDate(range.from) : `${formatDate(range.from)} to ${formatDate(range.to)}`],
+      [],
+      ['Sales and profit'],
+      ...figuresCsvRows(figures, csvRupees),
+    ];
+
+    if (sold.length) {
+      rows.push([], ['What sold'], ['Code', 'Item', 'Sold', 'Takings', 'Profit']);
+      for (const row of sold) {
+        rows.push([row.code, row.name, row.qty, csvRupees(row.takings), csvRupees(row.profit)]);
+      }
+    }
+
+    if (stock.rows.length) {
+      rows.push([], ['On the shelves'], ['Code', 'Item', 'Left', 'At cost', 'At selling price']);
+      for (const row of stock.rows) {
+        rows.push([row.code, row.name, row.qtyOnHand, csvRupees(row.stockCost), csvRupees(row.stockRetail)]);
+      }
+    }
+
+    if (stock.runningLow.length) {
+      rows.push([], ['Running low'], ['Code', 'Item', 'Left', 'Order at']);
+      for (const row of stock.runningLow) {
+        rows.push([row.code, row.name, row.qtyOnHand, row.lowStockLevel]);
+      }
+    }
+
+    if (stale?.length) {
+      rows.push([], ['Not moving'], ['Code', 'Item', 'Left', 'At cost', 'Days since it sold']);
+      for (const row of stale) {
+        rows.push([row.code, row.name, row.qtyOnHand, csvRupees(row.stockCost), row.days ?? 'never sold']);
+      }
+    }
+
+    if (owing.rows.length) {
+      rows.push([], ['Owed to the shop'], ['Customer', 'Phone', 'Owed', 'Waiting']);
+      for (const row of owing.rows) {
+        rows.push([row.name, row.phone, csvRupees(row.balance), DUE_BUCKET_LABELS[row.bucket]]);
+      }
+    }
+
+    const blob = new Blob([toCsv(rows)], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = csvFileName('report', range.from, range.to);
+    link.click();
+    // Freed on the next tick; revoking immediately can cancel the download on
+    // some phone browsers.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 
   return (
     <main className="mt-5 pb-10">
-      <h1 className="text-title font-semibold tracking-tight">Reports</h1>
+      <div className="flex items-baseline justify-between gap-4">
+        <h1 className="text-title font-semibold tracking-tight">Reports</h1>
+        <button
+          type="button"
+          onClick={save}
+          disabled={!ready}
+          className="rounded border border-rule bg-white px-3 py-1.5 text-meta disabled:opacity-45"
+        >
+          Save as a file
+        </button>
+      </div>
 
       <nav className="mt-4 flex flex-wrap gap-1.5">
         {PRESETS.map((option) => (

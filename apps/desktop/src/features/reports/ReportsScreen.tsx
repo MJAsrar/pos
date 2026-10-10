@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   DUE_BUCKET_LABELS,
   PAYMENT_METHOD_LABELS,
@@ -10,6 +10,7 @@ import {
   presetRange,
   type DateRange,
 } from '@pos/shared';
+import { Button } from '@/components/Button';
 import { DailySalesChart } from '@/components/DailySalesChart';
 import { EmptyState, PageHeader, Select, Toolbar } from '@/components/PageHeader';
 import { api } from '@/lib/api';
@@ -48,6 +49,7 @@ export function ReportsScreen(): React.JSX.Element {
             ? formatDate(range.from)
             : `${formatDate(range.from)} to ${formatDate(range.to)}`
         }
+        actions={<SaveReport range={range} />}
       />
 
       <Toolbar>
@@ -94,6 +96,36 @@ export function ReportsScreen(): React.JSX.Element {
         {tab === 'stock' && <StockReport range={range} canSeeCost={can('item.view_cost')} />}
         {tab === 'dues' && <DuesReport />}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Save the whole report as one file, in the folder with the receipts.
+ *
+ * One file rather than one per tab: this gets attached to something and sent,
+ * and three attachments is three chances to send the wrong one. Profit is left
+ * out of the file for anyone not allowed to see it, which the main process
+ * decides — not this button.
+ */
+function SaveReport({ range }: { range: DateRange }): React.JSX.Element {
+  const save = useMutation({ mutationFn: () => api.exportReport(range) });
+
+  return (
+    <div className="flex items-center gap-3">
+      {save.data && (
+        <button
+          type="button"
+          onClick={() => void api.openFolder('reports')}
+          className="text-meta text-ink-soft underline-offset-2 hover:text-ink hover:underline"
+        >
+          Saved as {save.data.fileName} — open the folder
+        </button>
+      )}
+      {save.error && <span className="text-meta text-due">It could not be saved.</span>}
+      <Button onClick={() => save.mutate()} disabled={save.isPending}>
+        {save.isPending ? 'Saving…' : 'Save as a file'}
+      </Button>
     </div>
   );
 }
