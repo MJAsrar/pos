@@ -257,6 +257,73 @@ export async function listItems(): Promise<ShopItem[]> {
   }));
 }
 
+// --- Customers and what they owe ------------------------------------------
+
+export interface ShopCustomer {
+  id: string;
+  name: string;
+  phone: string | null;
+  address: string | null;
+  /** Added up from the ledger, never a stored figure. */
+  balance: number;
+}
+
+/**
+ * Who owes what.
+ *
+ * Balances come from the `customer_balance` view for the same reason stock
+ * does: the cloud has no balance column, because a figure arriving from
+ * elsewhere could overwrite a day of udhaar taken at the counter. The ledger
+ * entries are the truth and the view adds them up.
+ */
+export async function listCustomers(): Promise<ShopCustomer[]> {
+  const [customers, balances] = await Promise.all([
+    read<{ id: string; name: string; phone: string | null; address: string | null }>(
+      'customers?select=id,name,phone,address&deleted_at=is.null&order=name',
+    ),
+    read<{ customer_id: string; balance: number }>('customer_balance?select=customer_id,balance'),
+  ]);
+
+  const owing = new Map(balances.map((row) => [row.customer_id, row.balance]));
+  return customers.map((row) => ({ ...row, balance: owing.get(row.id) ?? 0 }));
+}
+
+export interface LedgerLine {
+  id: string;
+  type: string;
+  amount: number;
+  balanceAfter: number;
+  refLabel: string | null;
+  note: string | null;
+  entryDate: string;
+}
+
+/** A customer's history, oldest first so the running balance reads downward. */
+export async function customerLedger(customerId: string): Promise<LedgerLine[]> {
+  const rows = await read<{
+    id: string;
+    type: string;
+    amount: number;
+    balance_after: number;
+    ref_label: string | null;
+    note: string | null;
+    entry_date: string;
+  }>(
+    `customer_ledger_entries?select=id,type,amount,balance_after,ref_label,note,entry_date` +
+      `&customer_id=eq.${customerId}&deleted_at=is.null&order=entry_date.asc,id.asc`,
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    type: row.type,
+    amount: row.amount,
+    balanceAfter: row.balance_after,
+    refLabel: row.ref_label,
+    note: row.note,
+    entryDate: row.entry_date,
+  }));
+}
+
 // --- What the shop is called ----------------------------------------------
 
 export async function shopName(): Promise<string> {

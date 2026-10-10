@@ -45,6 +45,7 @@ export function Guarded({ children }: { children: React.ReactNode }) {
 const PAGES = [
   { href: '/', label: 'Today' },
   { href: '/items', label: 'Items' },
+  { href: '/customers', label: 'Customers' },
 ] as const;
 
 function Nav({ onSignOut }: { onSignOut: () => void }) {

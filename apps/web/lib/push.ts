@@ -21,7 +21,16 @@
  * member row says which account this sign-in acts as.
  */
 
-import { countToMovement, nowIso, rowKey, uuidv7, type PushRow, type RowResult } from '@pos/shared';
+import {
+  countToMovement,
+  nowIso,
+  rowKey,
+  signedAmount,
+  uuidv7,
+  type PaymentMethod,
+  type PushRow,
+  type RowResult,
+} from '@pos/shared';
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL, accessToken, read } from './shop';
 
 /** How this device names itself in the audit trail and in conflict messages. */
@@ -183,6 +192,83 @@ export function correctStock(input: {
         qty_after: movement.qtyAfter,
         reason: input.reason,
         user_id: input.userId,
+        created_at: when,
+        updated_at: when,
+      },
+    },
+  ]);
+}
+
+/**
+ * Record money a customer has handed over.
+ *
+ * Two rows, in one call, because they are one event: the payment itself and
+ * the ledger entry that moves the balance. Separate requests could half
+ * succeed and leave a receipt with no effect on what the customer owes, or an
+ * effect with no receipt behind it.
+ *
+ * The balance itself is not sent. `customers` in the cloud has no balance
+ * column -- it is the sum of the ledger, and the counter adds it up again when
+ * these rows reach it. `balance_after` travels only as the trail, so the
+ * history reads downward the way a register does.
+ *
+ * The sign comes from `signedAmount`, which is the same function the till
+ * uses: a payment reduces what is owed, and getting that backwards would
+ * double a debt rather than clear it.
+ */
+export function receivePayment(input: {
+  customerId: string;
+  amount: number;
+  currentBalance: number;
+  method: PaymentMethod;
+  note?: string | null;
+  userId: string;
+}): Promise<RowResult[]> {
+  const amount = Math.round(input.amount);
+  if (amount <= 0) {
+    return Promise.reject(new PushRefused('Enter the amount the customer handed over.'));
+  }
+
+  const when = nowIso();
+  const paymentId = uuidv7();
+  const entryId = uuidv7();
+  const signed = signedAmount('payment', amount);
+  const note = input.note?.trim() || null;
+
+  return pushChanges([
+    {
+      table: 'customer_payments',
+      id: paymentId,
+      deleted: false,
+      updatedAt: when,
+      data: {
+        id: paymentId,
+        customer_id: input.customerId,
+        amount,
+        method: input.method,
+        received_at: when,
+        user_id: input.userId,
+        note,
+        created_at: when,
+        updated_at: when,
+      },
+    },
+    {
+      table: 'customer_ledger_entries',
+      id: entryId,
+      deleted: false,
+      updatedAt: when,
+      data: {
+        id: entryId,
+        customer_id: input.customerId,
+        type: 'payment',
+        amount: signed,
+        balance_after: input.currentBalance + signed,
+        ref_type: 'payment',
+        ref_id: paymentId,
+        note,
+        user_id: input.userId,
+        entry_date: when,
         created_at: when,
         updated_at: when,
       },
