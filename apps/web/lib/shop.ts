@@ -195,6 +195,68 @@ export async function periodFigures(range: DateRange): Promise<PeriodSummary> {
   });
 }
 
+// --- The catalogue --------------------------------------------------------
+
+export interface ShopItem {
+  id: string;
+  code: string;
+  name: string;
+  categoryName: string | null;
+  unit: string;
+  costPrice: number;
+  salePrice: number;
+  minPrice: number | null;
+  lowStockLevel: number;
+  /** Added up from the movements, never a stored figure. */
+  qtyOnHand: number;
+}
+
+interface ItemRow {
+  id: string;
+  code: string;
+  name: string;
+  category_id: string | null;
+  unit: string;
+  cost_price: number;
+  sale_price: number;
+  min_price: number | null;
+  low_stock_level: number;
+}
+
+/**
+ * The catalogue, with what is on the shelf.
+ *
+ * Stock comes from the `item_stock` view rather than from the items rows,
+ * because the cloud has no stock column: it is the sum of the movements. The
+ * two are fetched together and matched up here — fifty-odd items, so there is
+ * nothing to be gained by making the database do it.
+ */
+export async function listItems(): Promise<ShopItem[]> {
+  const [items, stock, categories] = await Promise.all([
+    read<ItemRow>(
+      'items?select=id,code,name,category_id,unit,cost_price,sale_price,min_price,low_stock_level&deleted_at=is.null&order=code',
+    ),
+    read<{ item_id: string; qty_on_hand: number }>('item_stock?select=item_id,qty_on_hand'),
+    read<{ id: string; name: string }>('categories?select=id,name&deleted_at=is.null'),
+  ]);
+
+  const onHand = new Map(stock.map((row) => [row.item_id, row.qty_on_hand]));
+  const categoryName = new Map(categories.map((row) => [row.id, row.name]));
+
+  return items.map((row) => ({
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    categoryName: row.category_id ? (categoryName.get(row.category_id) ?? null) : null,
+    unit: row.unit,
+    costPrice: row.cost_price,
+    salePrice: row.sale_price,
+    minPrice: row.min_price,
+    lowStockLevel: row.low_stock_level,
+    qtyOnHand: onHand.get(row.id) ?? 0,
+  }));
+}
+
 // --- What the shop is called ----------------------------------------------
 
 export async function shopName(): Promise<string> {

@@ -1,5 +1,5 @@
 import type BetterSqlite3 from 'better-sqlite3';
-import { nowIso, uuidv7, type StockMovementType } from '@pos/shared';
+import { countToMovement, nowIso, uuidv7, type StockMovementType } from '@pos/shared';
 import { AppError } from '../errors.js';
 import { findItemById } from '../db/repos/itemRepo.js';
 import { writeAudit } from './auditService.js';
@@ -184,10 +184,13 @@ export function adjustStock(
   const item = findItemById(db, input.itemId);
   if (!item) throw new AppError('not_found', 'That item no longer exists.');
 
-  const qtyDelta = round3(input.countedQty - item.qtyOnHand);
-  if (qtyDelta === 0) {
+  // The same rule the website uses when the owner corrects a figure from
+  // their phone: a count becomes the difference it makes, never the figure.
+  const counted = countToMovement(input.countedQty, item.qtyOnHand);
+  if (counted.unchanged) {
     throw new AppError('no_change', 'That is already the recorded quantity.');
   }
+  const qtyDelta = counted.delta;
 
   return db.transaction(() => {
     const { qtyAfter } = recordMovement(db, {

@@ -2,24 +2,25 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { FIGURE_LABELS, formatPKR, presetRange, type DateRange, type PeriodSummary } from '@pos/shared';
-import {
-  forgetSession,
-  periodFigures,
-  readSession,
-  shopName,
-  signIn,
-} from '@/lib/shop';
+import { Guarded } from '@/components/shell';
+import { periodFigures, shopName } from '@/lib/shop';
 
 /**
- * What the owner wants to know when they pick up their phone: what has the
- * shop taken today, how much of it is still owed, and what is left after the
- * goods and the spending.
+ * What the owner wants to know when they pick up their phone: what the shop
+ * has taken, how much of it is still owed, and what is left after the goods
+ * and the spending.
  *
- * Every figure here is computed by the same function the till uses, from the
- * same rows, so the two cannot drift. If this page and the counter ever
- * disagree, one of them is reading a different day — not doing different
- * arithmetic.
+ * Every figure is computed by the same function the till uses, from the same
+ * rows. If this page and the counter ever disagree, one of them is looking at
+ * a different day — not doing different arithmetic.
  */
+export default function DashboardPage() {
+  return (
+    <Guarded>
+      <Dashboard />
+    </Guarded>
+  );
+}
 
 type Preset = 'today' | 'yesterday' | 'last7' | 'thisMonth';
 
@@ -30,36 +31,7 @@ const PRESETS: Array<{ id: Preset; label: string }> = [
   { id: 'thisMonth', label: 'This month' },
 ];
 
-export default function Dashboard() {
-  const [signedIn, setSignedIn] = useState(false);
-  const [checked, setChecked] = useState(false);
-
-  useEffect(() => {
-    setSignedIn(readSession() !== null);
-    setChecked(true);
-  }, []);
-
-  // Whether anyone is signed in is only knowable in the browser, so the page
-  // that arrives from the server cannot know which of the two to show. It
-  // shows the shop's name and nothing else: a blank screen on a slow phone
-  // looks broken, and guessing wrong would flash a sign-in form at someone
-  // who is already signed in.
-  if (!checked) return <Waiting />;
-  if (!signedIn) return <SignIn onDone={() => setSignedIn(true)} />;
-
-  return <Shop onSignOut={() => { forgetSession(); setSignedIn(false); }} />;
-}
-
-function Waiting() {
-  return (
-    <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center px-4">
-      <h1 className="text-title font-semibold tracking-tight">Al Hamza Electronics</h1>
-      <p className="mt-1.5 text-row text-ink-faint">Opening the shop…</p>
-    </main>
-  );
-}
-
-function Shop({ onSignOut }: { onSignOut: () => void }) {
+function Dashboard() {
   const [preset, setPreset] = useState<Preset>('today');
   const [figures, setFigures] = useState<PeriodSummary | null>(null);
   const [name, setName] = useState('Al Hamza Electronics');
@@ -85,19 +57,10 @@ function Shop({ onSignOut }: { onSignOut: () => void }) {
   }, [preset, load]);
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-7 sm:px-6">
-      <header className="flex items-baseline justify-between gap-4">
-        <h1 className="text-title font-semibold tracking-tight">{name}</h1>
-        <button
-          type="button"
-          onClick={onSignOut}
-          className="text-meta text-ink-faint underline-offset-2 hover:text-ink hover:underline"
-        >
-          Sign out
-        </button>
-      </header>
+    <main className="mt-5">
+      <h1 className="text-title font-semibold tracking-tight">{name}</h1>
 
-      <nav className="mt-5 flex flex-wrap gap-1.5">
+      <nav className="mt-4 flex flex-wrap gap-1.5">
         {PRESETS.map((option) => (
           <button
             key={option.id}
@@ -126,9 +89,19 @@ function Shop({ onSignOut }: { onSignOut: () => void }) {
 
       {figures && (
         <div className={loading ? 'mt-6 opacity-60 transition-opacity' : 'mt-6 transition-opacity'}>
-          <Lead summary={figures} />
+          <div className="rounded border border-rule bg-white px-4 py-5">
+            <p className="text-meta text-ink-soft">{FIGURE_LABELS.netSales}</p>
+            <p className="mt-1 text-figure font-semibold tracking-tight tabular-nums">
+              {formatPKR(figures.netSales)}
+            </p>
+            <p className="mt-1.5 text-meta text-ink-faint">
+              {figures.billCount === 0
+                ? 'Nothing sold yet'
+                : `${figures.billCount} ${figures.billCount === 1 ? 'bill' : 'bills'}`}
+            </p>
+          </div>
 
-          <dl className="mt-4 grid grid-cols-2 gap-3">
+          <dl className="mt-3 grid grid-cols-2 gap-3">
             <Figure label={FIGURE_LABELS.grossProfit} amount={figures.grossProfit} />
             <Figure label={FIGURE_LABELS.expenses} amount={figures.expenses} />
             <Figure
@@ -159,22 +132,6 @@ function Shop({ onSignOut }: { onSignOut: () => void }) {
   );
 }
 
-function Lead({ summary }: { summary: PeriodSummary }) {
-  return (
-    <div className="rounded border border-rule bg-white px-4 py-5">
-      <dt className="text-meta text-ink-soft">{FIGURE_LABELS.netSales}</dt>
-      <dd className="mt-1 text-figure font-semibold tracking-tight tabular-nums">
-        {formatPKR(summary.netSales)}
-      </dd>
-      <p className="mt-1.5 text-meta text-ink-faint">
-        {summary.billCount === 0
-          ? 'Nothing sold yet'
-          : `${summary.billCount} ${summary.billCount === 1 ? 'bill' : 'bills'}`}
-      </p>
-    </div>
-  );
-}
-
 function Figure({
   label,
   amount,
@@ -201,73 +158,5 @@ function Line({ label, amount }: { label: string; amount: number }) {
       <dt className="text-ink-soft">{label}</dt>
       <dd className="tabular-nums">{formatPKR(amount)}</dd>
     </div>
-  );
-}
-
-function SignIn({ onDone }: { onDone: () => void }) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [problem, setProblem] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    setProblem(null);
-    try {
-      await signIn(email, password);
-      onDone();
-    } catch (cause) {
-      setProblem(cause instanceof Error ? cause.message : 'That did not work.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center px-4">
-      <h1 className="text-title font-semibold tracking-tight">Al Hamza Electronics</h1>
-      <p className="mt-1.5 text-row text-ink-soft">Sign in to see the shop.</p>
-
-      <form className="mt-6 space-y-4" onSubmit={submit}>
-        <label className="block">
-          <span className="text-meta text-ink-soft">Email</span>
-          <input
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            autoComplete="username"
-            required
-            className="mt-1 w-full rounded border border-rule bg-white px-3 py-2.5 text-row outline-none focus:border-board"
-          />
-        </label>
-
-        <label className="block">
-          <span className="text-meta text-ink-soft">Password</span>
-          <input
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            autoComplete="current-password"
-            required
-            className="mt-1 w-full rounded border border-rule bg-white px-3 py-2.5 text-row outline-none focus:border-board"
-          />
-        </label>
-
-        {problem && (
-          <p className="rounded border border-due/30 bg-due-tint px-3 py-2.5 text-meta text-due">
-            {problem}
-          </p>
-        )}
-
-        <button
-          type="submit"
-          disabled={busy || !email || !password}
-          className="w-full rounded bg-ink px-4 py-2.5 text-row font-medium text-white disabled:opacity-45"
-        >
-          {busy ? 'Signing in…' : 'Sign in'}
-        </button>
-      </form>
-    </main>
   );
 }
