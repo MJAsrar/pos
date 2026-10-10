@@ -15,7 +15,7 @@ web portal that reads it.
 ```bash
 npm install          # also rebuilds better-sqlite3 for Electron's ABI
 npm run dev          # start the app with hot reload
-npm test             # 305 tests across the workspace
+npm test             # 312 tests across the workspace
 npm run typecheck    # both the Electron side and the renderer
 npm run build:win    # produces apps/desktop/release/Al Hamza POS Setup <version>.exe
 ```
@@ -116,8 +116,20 @@ and the ledger entry together because they are one event.
 npm run dev --workspace=@pos/web    # http://localhost:3000
 ```
 
-Not built yet: staff accounts, which need a server route because a PIN has to
-be hashed where the browser cannot see it, and export.
+Staff accounts are the one thing with a server route behind them. A PIN has to
+become an Argon2 hash somewhere the browser cannot be made to skip, and the
+plain PIN must never reach the database -- so it goes to `app/api/staff`, is
+hashed at the same cost the till uses, and only the hash is stored. That route
+has no authority of its own: it carries the caller's own sign-in through and
+writes with that, so it can do nothing the person could not do themselves.
+There is no service key anywhere in the web app, and adding one would make
+that route the weakest part of the system.
+
+What makes an acceptable PIN lives in `packages/shared` for the same reason
+the money rules do: the counter and the website both ask, and a PIN the till
+would refuse must not slip through from a phone.
+
+Not built yet: export.
 
 ### Sync
 

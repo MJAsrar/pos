@@ -26,6 +26,25 @@ export const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_9z0NURwmeUfH4lMWUZ7fAA_d
 
 const SESSION_KEY = 'alhamza.session';
 
+/**
+ * Long enough for a slow phone, short enough that a stalled connection
+ * becomes a sentence rather than a page that says "Loading" forever.
+ *
+ * The shop is on mobile internet that comes and goes. Without this, a request
+ * that never completes leaves the screen in a state nobody can interpret and
+ * nothing to do but reload and hope.
+ */
+const TIMEOUT_MS = 20_000;
+
+function fetchOrGiveUp(url: string, init: RequestInit = {}): Promise<Response> {
+  return fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) }).catch((cause: unknown) => {
+    if (cause instanceof DOMException && cause.name === 'TimeoutError') {
+      throw new Error('The connection is too slow to read the shop right now. Try again in a moment.');
+    }
+    throw new Error('There is no connection to the shop right now.');
+  });
+}
+
 export interface Session {
   accessToken: string;
   refreshToken: string;
@@ -71,7 +90,7 @@ interface TokenReply {
 }
 
 async function token(grant: 'password' | 'refresh_token', body: Record<string, string>, email: string): Promise<Session> {
-  const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=${grant}`, {
+  const response = await fetchOrGiveUp(`${SUPABASE_URL}/auth/v1/token?grant_type=${grant}`, {
     method: 'POST',
     headers: { apikey: SUPABASE_PUBLISHABLE_KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -114,9 +133,11 @@ export async function accessToken(): Promise<string> {
 
 // --- Reading ---------------------------------------------------------------
 
+export { fetchOrGiveUp };
+
 export async function read<T>(path: string): Promise<T[]> {
   const jwt = await accessToken();
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+  const response = await fetchOrGiveUp(`${SUPABASE_URL}/rest/v1/${path}`, {
     headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${jwt}` },
   });
 

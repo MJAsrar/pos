@@ -7,4 +7,5 @@ export * from './domain/sale.js';
 export * from './domain/ledger.js';
 export * from './domain/report.js';
 export * from './domain/stock.js';
+export * from './domain/pin.js';
 export * from './sync.js';

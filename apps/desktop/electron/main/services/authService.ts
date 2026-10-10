@@ -2,7 +2,11 @@ import type BetterSqlite3 from 'better-sqlite3';
 import { hash, verify } from '@node-rs/argon2';
 import {
   DEFAULT_STAFF_PERMISSIONS,
+  PIN_HASH_COST,
+  PIN_LENGTH,
+  isValidPin,
   nowIso,
+  pinWeakness,
   sanitizePermissions,
   uuidv7,
   type Permission,
@@ -35,40 +39,27 @@ import { writeAudit } from './auditService.js';
  * here in the main process — the renderer never receives a hash.
  */
 
-export const PIN_LENGTH = 4;
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 5;
 
-// Argon2id tuned so a single verify takes roughly 100ms on shop-grade hardware:
-// unnoticeable when a cashier signs in, ruinous for anyone trying all 10,000 PINs.
+// What makes an acceptable PIN, and the cost of checking one, both live in the
+// shared package now: the website sets PINs too, and rules that differed would
+// let a PIN through from a phone that the till would have refused.
+//
 // Argon2id is @node-rs/argon2's default algorithm. It is not named explicitly
 // because the library exports `Algorithm` as an ambient const enum, which cannot
 // be referenced under isolatedModules.
-const ARGON_OPTIONS = {
-  memoryCost: 19456, // 19 MiB
-  timeCost: 2,
-  parallelism: 1,
-} as const;
-
-export function isValidPin(pin: string): boolean {
-  return new RegExp(`^\\d{${PIN_LENGTH}}$`).test(pin);
-}
-
-/** Reject PINs that offer no protection at all. */
-export function pinWeakness(pin: string): string | null {
-  if (!isValidPin(pin)) return `The PIN must be exactly ${PIN_LENGTH} digits.`;
-  if (/^(\d)\1+$/.test(pin)) return 'Choose a PIN that is not the same digit repeated.';
-  if (pin === '1234' || pin === '0000' || pin === '4321') {
-    return 'That PIN is too easy to guess. Choose another.';
-  }
-  return null;
-}
+const ARGON_OPTIONS = PIN_HASH_COST;
 
 export async function hashPin(pin: string): Promise<string> {
   const weakness = pinWeakness(pin);
   if (weakness) throw new AppError('weak_pin', weakness);
   return hash(pin, ARGON_OPTIONS);
 }
+
+// Re-exported so the operations layer keeps importing its PIN rules from one
+// place, even though they are defined in the shared package now.
+export { PIN_LENGTH, isValidPin, pinWeakness };
 
 export interface LoginResult {
   user: SessionUser;

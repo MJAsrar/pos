@@ -31,7 +31,7 @@ import {
   type PushRow,
   type RowResult,
 } from '@pos/shared';
-import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL, accessToken, read } from './shop';
+import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL, accessToken, fetchOrGiveUp, read } from './shop';
 
 /** How this device names itself in the audit trail and in conflict messages. */
 const DEVICE_ID = 'the-website';
@@ -63,7 +63,7 @@ export async function pushChanges(changes: PushRow[]): Promise<RowResult[]> {
   if (!changes.length) return [];
 
   const jwt = await accessToken();
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/sync_v1`, {
+  const response = await fetchOrGiveUp(`${SUPABASE_URL}/rest/v1/rpc/sync_v1`, {
     method: 'POST',
     headers: {
       apikey: SUPABASE_PUBLISHABLE_KEY,
@@ -272,6 +272,28 @@ export function receivePayment(input: {
         created_at: when,
         updated_at: when,
       },
+    },
+  ]);
+}
+
+/**
+ * Stop someone signing in, or let them again.
+ *
+ * An ordinary change to their row, not a deletion: bills they rang up still
+ * point at them, and the audit log still names them. Switching the account off
+ * is what the shop means by somebody leaving.
+ */
+export function setActive(userId: string, active: boolean): Promise<RowResult[]> {
+  const when = nowIso();
+  return pushChanges([
+    {
+      table: 'users',
+      id: userId,
+      deleted: false,
+      updatedAt: when,
+      // Only these two columns, so their PIN and what they can do are left
+      // untouched by being switched off and on again.
+      data: { id: userId, is_active: active ? 1 : 0, updated_at: when },
     },
   ]);
 }
