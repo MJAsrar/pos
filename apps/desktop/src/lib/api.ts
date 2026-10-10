@@ -653,6 +653,15 @@ export const api = {
     call<AuditEntry[]>('audit.list', options),
 
   // Cloud
+  joinExistingShop: (email: string, password: string) =>
+    call<{
+      shopName: string;
+      items: number;
+      categories: number;
+      people: number;
+      received: number;
+    }>('setup.joinExistingShop', { email, password }),
+
   syncStatus: () => call<SyncStatus>('sync.status'),
   syncNow: () => call<SyncRun>('sync.now'),
   syncResumed: () =>

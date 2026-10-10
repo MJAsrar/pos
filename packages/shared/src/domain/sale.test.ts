@@ -3,6 +3,7 @@ import {
   computeSaleTotals,
   formatInvoiceNo,
   hasBlockingIssue,
+  parseInvoiceNo,
   saleProfit,
   settleSale,
   validateSale,
@@ -213,5 +214,40 @@ describe('formatInvoiceNo', () => {
   it('falls back when the prefix is unusable', () => {
     expect(formatInvoiceNo('  ', 7)).toBe('INV-00007');
     expect(formatInvoiceNo('A/H #', 7)).toBe('AH-00007');
+  });
+});
+
+describe('parseInvoiceNo', () => {
+  it('reads the sequence back out of a bill number', () => {
+    expect(parseInvoiceNo('AH', 'AH-00001')).toBe(1);
+    expect(parseInvoiceNo('AH', 'AH-01234')).toBe(1234);
+  });
+
+  it('does not mind how the prefix was typed', () => {
+    expect(parseInvoiceNo(' ah ', 'AH-00007')).toBe(7);
+  });
+
+  it('reads the return series, which hangs an R off the same prefix', () => {
+    expect(parseInvoiceNo('AHR', 'AHR-00002')).toBe(2);
+    // And does not mistake a return for a bill.
+    expect(parseInvoiceNo('AH', 'AHR-00002')).toBeNull();
+  });
+
+  it('refuses a number from a different series', () => {
+    // The shop renamed its bills. The old ones are not part of the new series
+    // and must not drag its numbering forward past them.
+    expect(parseInvoiceNo('HAMZA', 'AH-00005')).toBeNull();
+  });
+
+  it('refuses anything it cannot read, rather than guessing', () => {
+    for (const value of ['AH-', 'AH-abc', '-00001', 'AH00001', '', 'AH-00001-x', 'AH-0']) {
+      expect(parseInvoiceNo('AH', value)).toBeNull();
+    }
+  });
+
+  it('round-trips whatever formatInvoiceNo produces', () => {
+    for (const sequence of [1, 9, 10, 99, 100, 12_345, 999_999]) {
+      expect(parseInvoiceNo('AH', formatInvoiceNo('AH', sequence))).toBe(sequence);
+    }
   });
 });

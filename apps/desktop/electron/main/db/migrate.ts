@@ -19,7 +19,11 @@ export interface MigrationResult {
  * Before the first pending migration is applied, the current file is copied
  * aside — if a migration is wrong, the shop's data is still recoverable.
  */
-export function migrate(db: BetterSqlite3.Database, dbPath: string): MigrationResult {
+export function migrate(
+  db: BetterSqlite3.Database,
+  dbPath: string,
+  options: { backupDir?: string } = {},
+): MigrationResult {
   const current = db.pragma('user_version', { simple: true }) as number;
 
   if (current > latestVersion) {
@@ -35,7 +39,8 @@ export function migrate(db: BetterSqlite3.Database, dbPath: string): MigrationRe
     return { from: current, to: current, applied: [], backupPath: null };
   }
 
-  const backupPath = current > 0 ? backupBeforeMigration(dbPath, current) : null;
+  const backupPath =
+    current > 0 ? backupBeforeMigration(db, dbPath, current, options.backupDir) : null;
   const applied: string[] = [];
 
   for (const migration of pending) {
@@ -60,9 +65,37 @@ export function migrate(db: BetterSqlite3.Database, dbPath: string): MigrationRe
   return { from: current, to: latestVersion, applied, backupPath };
 }
 
-function backupBeforeMigration(dbPath: string, fromVersion: number): string {
+/**
+ * Copy the database aside before touching its schema.
+ *
+ * The checkpoint is the whole point of this function and was missing. In WAL
+ * mode recent writes live in a `-wal` file beside the database, and the main
+ * file can be almost empty — so a plain copy produced a 4 KB file with no
+ * tables in it, which is what this safety net turned out to be when one was
+ * finally opened. Folding the log in first makes the single copied file
+ * complete, the same reason `createBackup` uses SQLite's own backup rather
+ * than copying bytes.
+ *
+ * If the log cannot be folded in, nothing is migrated. A safety net that
+ * might be empty is worse than refusing to start, because the shop would only
+ * find out after a migration had already gone wrong.
+ */
+function backupBeforeMigration(
+  db: BetterSqlite3.Database,
+  dbPath: string,
+  fromVersion: number,
+  backupDir?: string,
+): string {
+  const [checkpoint] = db.pragma('wal_checkpoint(TRUNCATE)') as Array<{ busy: number }>;
+  if (checkpoint && checkpoint.busy !== 0) {
+    throw new Error(
+      'The database could not be copied aside before upgrading it, because something ' +
+        'else is still writing to it. Close any other copy of Al Hamza POS and try again.',
+    );
+  }
+
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const target = join(backupsDir(), `pos-${stamp}-before-v${fromVersion + 1}.db`);
+  const target = join(backupDir ?? backupsDir(), `pos-${stamp}-before-v${fromVersion + 1}.db`);
   copyFileSync(dbPath, target);
   return target;
 }

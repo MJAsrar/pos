@@ -8,20 +8,33 @@ import { ApiError, api, type Session } from '@/lib/api';
 interface SetupScreenProps {
   shopName: string;
   onDone: (session: Session) => void;
+  /** This computer joined a shop that already exists; there is no session yet. */
+  onJoined: () => void;
 }
 
-type Step = 'shop' | 'pin' | 'confirm';
+type Step = 'choose' | 'shop' | 'pin' | 'confirm' | 'join';
 
 /**
- * First run. Names the shop and creates the owner's account.
+ * First run. Either names a new shop and creates the owner's account, or
+ * connects this computer to a shop that already exists.
+ *
+ * The second path is not a convenience. Without it there is only one way
+ * through this screen, so putting the app on a replacement computer means
+ * creating a second owner account, overwriting the real shop details with
+ * freshly typed ones, and ending up with a PIN screen showing the same person
+ * twice.
  *
  * Only ever seen once, so it explains rather than assumes: the person doing this
  * is a shop owner setting up software, not an administrator who already knows
  * what a "user account" is. The left panel shows the receipt header taking shape
  * as they type, so the shop details are not an abstract form.
  */
-export function SetupScreen({ shopName, onDone }: SetupScreenProps): React.JSX.Element {
-  const [step, setStep] = useState<Step>('shop');
+export function SetupScreen({
+  shopName,
+  onDone,
+  onJoined,
+}: SetupScreenProps): React.JSX.Element {
+  const [step, setStep] = useState<Step>('choose');
   const [shop, setShop] = useState(shopName);
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
@@ -30,6 +43,16 @@ export function SetupScreen({ shopName, onDone }: SetupScreenProps): React.JSX.E
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [pinError, setPinError] = useState<string>();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
+  const join = useMutation({
+    mutationFn: () => api.joinExistingShop(email.trim(), password),
+    onSuccess: () => {
+      setPassword('');
+      onJoined();
+    },
+  });
 
   const create = useMutation({
     mutationFn: api.setupOwner,
@@ -42,6 +65,7 @@ export function SetupScreen({ shopName, onDone }: SetupScreenProps): React.JSX.E
   });
 
   const error = create.error instanceof ApiError ? create.error : null;
+  const joinError = join.error instanceof ApiError ? join.error.message : undefined;
   const detailsReady =
     shop.trim().length >= 2 && fullName.trim().length >= 2 && username.trim().length >= 3;
 
@@ -82,14 +106,112 @@ export function SetupScreen({ shopName, onDone }: SetupScreenProps): React.JSX.E
             {phone.trim() && <p className="text-base text-white/60">{phone.trim()}</p>}
           </div>
         </div>
-        <Progress step={step} />
+        {step !== 'choose' && step !== 'join' && <Progress step={step} />}
       </aside>
 
       <main className="flex flex-1 items-center justify-center overflow-y-auto p-10">
         <div className="w-full max-w-md">
           <h1 className="text-title font-semibold tracking-tight text-ink">
-            {step === 'shop' ? 'Set up the shop' : 'Choose your PIN'}
+            {step === 'choose'
+              ? 'Welcome'
+              : step === 'join'
+                ? 'Connect to your shop'
+                : step === 'shop'
+                  ? 'Set up the shop'
+                  : 'Choose your PIN'}
           </h1>
+
+          {step === 'choose' && (
+            <div className="mt-7 space-y-3">
+              <p className="text-base text-ink-soft">
+                Is this the first computer for this shop, or does the shop already run on another
+                one?
+              </p>
+
+              <button
+                type="button"
+                onClick={() => setStep('shop')}
+                className="w-full rounded border border-rule px-4 py-3.5 text-left transition-colors duration-100 hover:border-board hover:bg-board/10"
+              >
+                <span className="block text-base font-medium text-ink">This is a new shop</span>
+                <span className="mt-0.5 block text-meta text-ink-soft">
+                  Name the shop and create your own account.
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStep('join')}
+                className="w-full rounded border border-rule px-4 py-3.5 text-left transition-colors duration-100 hover:border-board hover:bg-board/10"
+              >
+                <span className="block text-base font-medium text-ink">
+                  The shop is already set up on another computer
+                </span>
+                <span className="mt-0.5 block text-meta text-ink-soft">
+                  Bring everything down to this one — the items, the customers, the bills, and who
+                  can sign in.
+                </span>
+              </button>
+            </div>
+          )}
+
+          {step === 'join' && (
+            <form
+              className="mt-7 space-y-5"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (email.trim() && password) join.mutate();
+              }}
+            >
+              <p className="text-base text-ink-soft">
+                Sign in with the shop account and this computer will take a copy of everything.
+                Signing in to the till itself still happens with your own PIN.
+              </p>
+
+              <Field
+                label="Email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                autoFocus
+                autoComplete="off"
+                maxLength={200}
+              />
+              <Field
+                label="Password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="off"
+                maxLength={200}
+                hint="Used once to sign in. It is not kept on this computer."
+              />
+
+              {joinError && (
+                <p className="rounded border border-due/30 bg-due-tint px-3 py-2.5 text-meta text-due">
+                  {joinError}
+                </p>
+              )}
+
+              <div className="flex items-center gap-3">
+                <Button
+                  type="submit"
+                  variant="primary"
+                  disabled={join.isPending || !email.trim() || !password}
+                >
+                  {join.isPending ? 'Bringing everything down…' : 'Connect this computer'}
+                </Button>
+                <Button variant="quiet" onClick={() => setStep('choose')} disabled={join.isPending}>
+                  Back
+                </Button>
+              </div>
+
+              {join.isPending && (
+                <p className="text-meta text-ink-soft">
+                  This can take a minute on a slow connection. It only happens once.
+                </p>
+              )}
+            </form>
+          )}
 
           {step === 'shop' && (
             <form
@@ -159,7 +281,7 @@ export function SetupScreen({ shopName, onDone }: SetupScreenProps): React.JSX.E
             </form>
           )}
 
-          {step !== 'shop' && (
+          {(step === 'pin' || step === 'confirm') && (
             <div className="mt-7">
               <p className="mb-7 text-row text-ink-soft">
                 {step === 'pin'

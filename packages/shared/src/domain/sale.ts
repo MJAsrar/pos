@@ -211,6 +211,38 @@ export function hasBlockingIssue(issues: readonly SaleIssue[]): boolean {
 
 /** Build the next invoice number, e.g. `AH-00042`. */
 export function formatInvoiceNo(prefix: string, sequence: number, width = 5): string {
-  const clean = prefix.trim().replace(/[^A-Za-z0-9-]/g, '').toUpperCase() || 'INV';
-  return `${clean}-${String(sequence).padStart(width, '0')}`;
+  return `${normalisePrefix(prefix)}-${String(sequence).padStart(width, '0')}`;
+}
+
+/** The prefix as it appears in a bill number, however it was typed. */
+export function normalisePrefix(prefix: string): string {
+  return prefix.trim().replace(/[^A-Za-z0-9-]/g, '').toUpperCase() || 'INV';
+}
+
+/**
+ * The sequence number out of a bill number, or null if it is not from this
+ * series.
+ *
+ * Needed because the invoice sequence is per-computer and never synced — it
+ * has to keep working with no connection, so it cannot ask the server for the
+ * next number. A computer that has just joined an existing shop therefore
+ * holds bills it did not mint, and its own counter would otherwise start again
+ * at one and claim a number the shop has already used.
+ *
+ * Bills under a different prefix are not part of this series and return null:
+ * if the shop changes its prefix, the old numbers must not drag the new series
+ * forward past them.
+ */
+export function parseInvoiceNo(prefix: string, invoiceNo: string): number | null {
+  const expected = normalisePrefix(prefix);
+  const separator = invoiceNo.lastIndexOf('-');
+  if (separator <= 0) return null;
+
+  if (invoiceNo.slice(0, separator).toUpperCase() !== expected) return null;
+
+  const digits = invoiceNo.slice(separator + 1);
+  if (!/^\d+$/.test(digits)) return null;
+
+  const sequence = Number(digits);
+  return Number.isSafeInteger(sequence) && sequence > 0 ? sequence : null;
 }

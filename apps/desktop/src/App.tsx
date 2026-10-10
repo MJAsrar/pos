@@ -62,6 +62,7 @@ export function App(): React.JSX.Element {
     return (
       <SetupScreen
         shopName={status.data.shopName}
+        onJoined={() => void status.refetch()}
         onDone={(next) => {
           handleSignedIn(next);
           void status.refetch();

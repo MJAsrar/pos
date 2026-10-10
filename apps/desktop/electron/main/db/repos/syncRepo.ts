@@ -190,6 +190,29 @@ export function recomputeDerived(
   }
 }
 
+// --- Keeping the local numbering past what arrived ------------------------
+
+/**
+ * Move a counter forward, never back.
+ *
+ * `counters` is one of the two tables that never sync: the invoice sequence is
+ * per-computer so it keeps working with no connection. The cost is that a
+ * computer which has just joined an existing shop holds bills it did not mint
+ * while its own counter is still at zero, and its first sale would claim a
+ * number already used. The unique index refuses it and the sale fails.
+ *
+ * So after bills arrive, the counter is pulled up past them. Guarded with
+ * `value <`, because a counter must never go backwards — two bills with the
+ * same number is the thing being avoided.
+ */
+export function advanceCounter(db: BetterSqlite3.Database, name: string, atLeast: number): void {
+  db.prepare(`UPDATE counters SET value = ? WHERE name = ? AND value < ?`).run(
+    atLeast,
+    name,
+    atLeast,
+  );
+}
+
 // --- Bookkeeping -----------------------------------------------------------
 
 export function readStateValue(db: BetterSqlite3.Database, key: string): string | null {

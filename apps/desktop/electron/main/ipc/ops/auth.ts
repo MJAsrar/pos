@@ -11,6 +11,8 @@ import {
   needsFirstRunSetup,
 } from '../../services/authService.js';
 import { createCategory } from '../../services/itemService.js';
+import { signIn as cloudSignIn, signOut as cloudSignOut } from '../../sync/cloudAuth.js';
+import { startSyncScheduler, syncNow } from '../../services/syncScheduler.js';
 import { getSettings, updateSettings } from '../../services/settingsService.js';
 import { updateState } from '../../services/updateService.js';
 import { getSessionUser, sessionStartedAt } from '../../session.js';
@@ -157,6 +159,82 @@ export function registerAuthOps(): void {
       return {
         user: { ...result.user, permissions: effectivePermissions(result.user) },
         since: result.loggedInAt,
+      };
+    },
+  });
+
+  /**
+   * First-run setup, the other way round: this shop already exists.
+   *
+   * A new computer replacing the one at the counter, or a second till. Without
+   * this there is only one way through the first screen — create an owner —
+   * which on a shop that already exists means a second owner account, a second
+   * set of shop details overwriting the real ones, and a PIN screen with two
+   * of the same person on it.
+   *
+   * So instead: sign in to the shop account, pull everything down, and hand
+   * the person back to the ordinary PIN screen to sign in as themselves.
+   *
+   * Public for the same reason `setup.createOwner` is — there is nobody to
+   * authorise it yet — and guarded the same way. It additionally needs the
+   * shop's cloud password, which is not something a passer-by has.
+   */
+  defineOp({
+    op: 'setup.joinExistingShop',
+    public: true,
+    input: z.object({
+      email: z.string().trim().min(3).max(200),
+      password: z.string().min(1).max(200),
+    }),
+    handler: async (input, ctx) => {
+      if (!needsFirstRunSetup(ctx.db)) {
+        throw new AppError(
+          'already_set_up',
+          'This computer is already set up. Sign in with your PIN instead.',
+        );
+      }
+
+      await cloudSignIn(input.email, input.password);
+
+      let run;
+      try {
+        run = await syncNow();
+      } catch (cause) {
+        // Half-joined is worse than not joined: leave no sign-in behind.
+        cloudSignOut();
+        throw cause;
+      }
+
+      if (run.problem) {
+        cloudSignOut();
+        throw new AppError('join_failed', run.problem);
+      }
+
+      // An account with no shop behind it. Pulling succeeded and brought
+      // nothing, which would leave this screen looping.
+      if (needsFirstRunSetup(ctx.db)) {
+        cloudSignOut();
+        throw new AppError(
+          'nothing_to_join',
+          'That account does not have a shop set up yet. Set this computer up as a new shop instead.',
+        );
+      }
+
+      startSyncScheduler();
+
+      const counted = (table: string): number => {
+        const row = ctx.db
+          .prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE deleted_at IS NULL`)
+          .get() as { n: number };
+        return row.n;
+      };
+
+      return {
+        shopName: getSettings(ctx.db).shopName,
+        items: counted('items'),
+        categories: counted('categories'),
+        people: counted('users'),
+        received: run.received,
       };
     },
   });

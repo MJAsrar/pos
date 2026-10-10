@@ -4,6 +4,7 @@ import {
   SyncServerError,
   inApplyOrder,
   nowIso,
+  parseInvoiceNo,
   rowKey,
   uuidv7,
   type PullRow,
@@ -12,11 +13,13 @@ import {
   type SyncTransport,
 } from '@pos/shared';
 import {
+  advanceCounter,
   applyRow,
   hasUnsentChange,
   readRowForPush,
   recomputeDerived,
 } from '../db/repos/syncRepo.js';
+import { getSettings } from './settingsService.js';
 import {
   applyingFromServer,
   clearState,
@@ -324,6 +327,8 @@ function applyResponse(
 
       const itemIds: string[] = [];
       const customerIds: string[] = [];
+      const billNumbers: string[] = [];
+      const returnNumbers: string[] = [];
 
       for (const row of inApplyOrder(changes)) {
         // The server sends back what it was just given. If this row has been
@@ -342,11 +347,34 @@ function applyResponse(
         if (row.table === 'customer_ledger_entries' && typeof row.data.customer_id === 'string') {
           customerIds.push(row.data.customer_id);
         }
+        if (row.table === 'sales' && typeof row.data.invoice_no === 'string') {
+          billNumbers.push(row.data.invoice_no);
+        }
+        if (row.table === 'sale_returns' && typeof row.data.return_no === 'string') {
+          returnNumbers.push(row.data.return_no);
+        }
       }
 
       // Stock and balances are sums of the rows that just landed, never
       // figures sent over the wire. This is where they are put back in step.
       recomputeDerived(db, { itemIds, customerIds });
+
+      // And the numbering continues past the bills that just arrived, rather
+      // than starting again at one and claiming a number already used.
+      if (billNumbers.length || returnNumbers.length) {
+        // Through the settings service, because the stored values are
+        // JSON-encoded — reading the column directly yields a quoted string.
+        const prefix = getSettings(db).invoicePrefix;
+        const highest = (numbers: readonly string[], series: string): number =>
+          numbers.reduce((top, value) => Math.max(top, parseInvoiceNo(series, value) ?? 0), 0);
+
+        const bill = highest(billNumbers, prefix);
+        if (bill > 0) advanceCounter(db, 'invoice', bill);
+
+        // Returns run their own series, under the bill prefix plus an R.
+        const refund = highest(returnNumbers, `${prefix}R`);
+        if (refund > 0) advanceCounter(db, 'return', refund);
+      }
 
       writeState(db, 'cursor', String(cursor));
 
