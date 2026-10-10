@@ -203,15 +203,39 @@ Three different things, worth not confusing:
 
 ## Before handing it to the shop
 
-- [ ] Set the GitHub `owner`/`repo` in `apps/desktop/electron-builder.yml`, or
+On the shop computer:
+
+- [x] Set the GitHub `owner`/`repo` in `apps/desktop/electron-builder.yml`, or
       auto-update stays switched off (it fails quietly, which is by design).
+- [ ] Install the latest release. On a computer that has never run it, choose
+      *The shop is already set up on another computer* and sign in — it brings
+      the catalogue, the customers, the bills and the logins down with it.
+- [ ] **Count the stock.** Every item is at zero until someone does, so the
+      stock report and the value of the shelves have nothing to show.
+- [ ] Enter each credit customer's balance from the register as their opening
+      balance.
 - [ ] Add the shop logo in Settings, and check the address and phone number.
-- [ ] Load the real item list, and enter each credit customer's balance from the
-      register as their opening balance.
 - [ ] Run a backup and **restore it once**, on purpose. An untested backup is not
       a backup.
 - [ ] Connect the computer in Settings → *Seeing the shop from a phone*, and
       watch the rail go from "Phone view not set up" to "Up to date".
+- [ ] Disconnect any computer that is no longer the till. Two tills at once is
+      the one thing this does not yet survive — see *Sync* above.
+
+For the cloud and the owner view:
+
+- [ ] Rotate the Postgres password in the Supabase dashboard (Settings →
+      Database → Reset database password). It was shared in a chat during
+      setup, and nothing in this repo uses it.
+- [ ] Give the owner their own sign-in rather than sharing the counter's: add
+      an account in Supabase Auth, then a `shop_members` row with their
+      `pos_user_id` set to their counter account, or they can look but not
+      change anything.
+- [ ] Deploy `apps/web` to Vercel with the **root directory set to
+      `apps/web`** — it is a workspace, so a build from the repo root will not
+      find it. There is nothing to configure beyond that: no environment
+      variables, because the project address and publishable key are in the
+      source on purpose and row-level security is what protects the data.
 
 The installer is unsigned — a code-signing certificate is not worth it for one
 machine — so Windows SmartScreen will warn on first install. Click *More info →
